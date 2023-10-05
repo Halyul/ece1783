@@ -12,3 +12,6 @@ class Config:
             self.config = yaml.load(open(self.config_path, "r"), Loader=yaml.FullLoader)
         except Exception as e:
             raise
+    
+    def get_output_path(self, key):
+        return pathlib.Path.cwd().joinpath(self.config['output'][key]) if key in self.config['output'] else None

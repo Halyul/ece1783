@@ -5,10 +5,10 @@ name = "pypi"
 
 [packages]
 numpy = "*"
-imageio = {extras = ["ffmpeg"], version = "*"}
 scipy = "*"
 pillow = "*"
 pyyaml = "*"
+matplotlib = "*"
 
 [dev-packages]
 

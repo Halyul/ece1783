@@ -1,5 +1,6 @@
 import pathlib
 import shutil
+import math
 import multiprocessing as mp
 from enum import Enum
 import numpy as np
@@ -55,23 +56,22 @@ class YUVProcessor:
     }
 
     COLOR_SPACE_PREDEFINED = {
-        '420jpeg': 'YUV 4:2:0 JPEG',
-        '420paldv': 'YUV 4:2:0 PAL-DV',
-        '420': 'YUV 4:2:0',
-        '422': 'YUV 4:2:2',
-        '444': 'YUV 4:4:4',
+        '420jpeg': '420', # YUV 4:2:0 JPEG
+        '420paldv': '420', # YUV 4:2:0 PAL-DV
+        '420': '420', # YUV 4:2:0
+        '422': '422', # YUV 4:2:2
+        '444': '444', # YUV 4:4:4
         'mono': 'YCbCr plane only',
     }
     
     def __init__(self, config_path):
-        self.config = Config(config_path).config
+        self.__config = Config(config_path)
+        self.config = self.__config.config
         self.file_path = self.config['input']
         self.file = pathlib.Path.cwd().joinpath(self.file_path)
         if not self.file.exists():
             raise FileNotFoundError('File not found.')
-        self.__output_path = pathlib.Path.cwd().joinpath(self.config['output_video']) if 'output_video' in self.config else None
-        self.__png_path = pathlib.Path.cwd().joinpath(self.config['output_pngs']) if 'output_pngs' in self.config is not None else None
-        self.__mp = MultiProcessFW(self.__output_path, self.__png_path)
+        self.__mp = MultiProcessFW(self.__config)
         self.info = {
             'format': '',
             'width': '',
@@ -97,7 +97,7 @@ class YUVProcessor:
             else:
                 self.upscale = YUVFormat.YUV444
         self.__offsets = None
-        self.__frame_processor = FrameProcessing(self.upscale, self.config['noise'] if 'noise' in self.config else None)
+        self.__frame_processor = FrameProcessing(self.__config, self.upscale)
         self.__debug = self.config['debug'] if 'debug' in self.config else False
         self.__deconstruct()
         return
@@ -173,18 +173,19 @@ class YUVProcessor:
         
         if self.info['color_space'] == str(YUVFormat.YUV422.value):
             self.__format = YUVFormat.YUV422
-            self.__offsets = (self.info['width'] * self.info['height'], self.info['width'] * self.info['height'] // 2)
         elif self.info['color_space'] == str(YUVFormat.YUV444.value):
             self.__format = YUVFormat.YUV444
-        else:
+        elif self.info['color_space'] == str(YUVFormat.YUV420.value):
             self.__format = YUVFormat.YUV420
+        else:
+            raise Exception('Unknown color space {}.'.format(self.info['color_space']))
         self.__offsets = self.__get_offsets()
 
         raw_header.extend(Identifier.SPACER.value) # add colorspace
         raw_header.extend(self.HEADER_IDENTIFIERS['COLOR_SPACE'])
         raw_header.extend(bytes(str(self.upscale.value), 'ascii')) # add upscale
         raw_header.extend(self.__byte) # add END_IDENTIFIER
-        self.__mp.add_to_output_q(raw_header)
+        self.__mp.add_to_video_q(raw_header)
         return
     
     """
@@ -267,19 +268,32 @@ class YUVProcessor:
     def __decode_current_byte(self) -> str:
         return self.__byte.decode('ascii')
 
+    """
+        Append value to header info.
+
+        Parameters:
+            key (str): The key of the header info.
+            value (str): The value to be appended.
+    """
+    def append_to_header_info(self, key, value):
+        self.info[key] += value
+        return
+
 class MultiProcessFW:
 
-    def __init__(self, output_path, png_path) -> None:
+    def __init__(self, config) -> None:
+        self.__config = config
         self.manager = mp.Manager()
         self.pool = mp.Pool(mp.cpu_count() + 2)
         self.jobs = []
-        self.__output_path = output_path
-        self.__png_path = png_path
 
-        self.output_q = None
-        if self.__output_path is not None:
-            self.output_q = self.manager.Queue()
-            self.output_watcher = self.pool.apply_async(self.write_raw_bytes_to_file, (self.__output_path, self.output_q,))
+        self.__video_path = self.__config.get_output_path('video')
+        self.__png_path = self.__config.get_output_path('pngs')
+        self.__y_only_path = self.__config.get_output_path('y_only')
+        self.video_q = None
+        if self.__video_path is not None:
+            self.video_q = self.manager.Queue()
+            self.output_watcher = self.pool.apply_async(self.write_raw_bytes_to_file, (self.__video_path, self.video_q,))
             self.__clear_output_path()
 
         self.png_q = None
@@ -289,15 +303,22 @@ class MultiProcessFW:
             self.__clear_png_path()
             pathlib.Path.cwd().joinpath(self.__png_path).mkdir(parents=True, exist_ok=True)
 
+        self.y_only_q = None
+        if self.__y_only_path is not None:
+            self.y_only_q = self.manager.Queue()
+            self.y_only_watcher = self.pool.apply_async(self.write_to_y_only_file, (self.__y_only_path, self.y_only_q,))
+            self.__clear_y_only_path()
+            pathlib.Path.cwd().joinpath(self.__y_only_path).mkdir(parents=True, exist_ok=True)
+
     """
         Clear the output video path.
     """
     def __clear_output_path(self):
-        if self.__output_path is not None:
-            pathlib.Path.cwd().joinpath(self.__output_path.parent).mkdir(parents=True, exist_ok=True)
-            if self.__output_path.exists():
-                self.__output_path.unlink()
-                self.__output_path.write_bytes(b'')
+        if self.__video_path is not None:
+            pathlib.Path.cwd().joinpath(self.__video_path.parent).mkdir(parents=True, exist_ok=True)
+            if self.__video_path.exists():
+                self.__video_path.unlink()
+                self.__video_path.write_bytes(b'')
         return
     
     """
@@ -310,6 +331,15 @@ class MultiProcessFW:
         return
 
     """
+        Clear the y_only path.
+    """
+    def __clear_y_only_path(self):
+        if self.__y_only_path is not None:
+            if self.__y_only_path.exists():
+                shutil.rmtree(self.__y_only_path)
+        return
+
+    """
         Run a function in parallel.
 
         Parameters:
@@ -319,9 +349,20 @@ class MultiProcessFW:
     """
     def dispatch(self, func, data, debug=False):
         if debug:
-            func(data, self.output_q, self.png_q)
+            func(data, (
+                self.video_q, 
+                self.png_q,
+                self.y_only_q
+            ))
         else:
-            job = self.pool.apply_async(func=func, args=(data, self.output_q, self.png_q,))
+            job = self.pool.apply_async(func=func, args=(
+                data, 
+                (
+                    self.video_q, 
+                    self.png_q,
+                    self.y_only_q
+                ),
+            ))
             self.jobs.append(job)
         return
     
@@ -331,9 +372,27 @@ class MultiProcessFW:
         Parameters:
             data (bytearray): The data to be added to the queue.
     """
-    def add_to_output_q(self, data):
-        if self.__output_path is not None:
-            self.output_q.put((-1, data))
+    def add_to_video_q(self, data):
+        if self.__video_path is not None:
+            self.video_q.put((-1, data))
+        return
+    
+    """
+        Write Y-only frame to file.
+        
+        Parameters:
+            path (pathlib.Path): The path of the png file.
+            q (mp.Queue): The queue to get data from.
+    """
+    @staticmethod
+    def write_to_y_only_file(path, q):
+        while True:
+            data = q.get()
+            if data == 'kill':
+                break
+            (y, frame_index) = data
+            path.joinpath('{}'.format(frame_index)).write_bytes(y)
+            print('done write ', frame_index)
         return
 
     """
@@ -397,10 +456,12 @@ class MultiProcessFW:
         for job in self.jobs: 
             job.get()
         
-        if self.__output_path is not None:
-            self.output_q.put('kill')
+        if self.__video_path is not None:
+            self.video_q.put('kill')
         if self.__png_path is not None:
             self.png_q.put('kill')
+        if self.__y_only_path is not None:
+            self.y_only_q.put('kill')
         self.pool.close()
         self.pool.join()
 
@@ -408,20 +469,22 @@ class MultiProcessFW:
     
 class FrameProcessing:
 
-    def __init__(self, upscale, noise=None) -> None:
+    def __init__(self, config, upscale) -> None:
+        self.__config = config
+        self.config = self.__config.config
         self.__upscale = upscale
-        self.__noise = noise
+        self.__noise = self.config['noise'] if 'noise' in self.config else None
 
     """
         Upscale the frame to YUV444.
 
         Parameters:
             data (tuple): The data to be processed.
-            output_q (mp.Queue or None): The queue to put the output video data if provided.
-            png_q (mp.Queue or None): The queue to put the output png.
+            queues (tuple): The queues to put data to.
     """
-    def upscale(self, data, output_q, png_q):
+    def upscale(self, data, queues):
         (width, frame_index, format_tuple, yuv_components, mode) = data
+        (video_q, png_q, y_only_q) = queues
 
         pixel_list = []
 
@@ -450,55 +513,122 @@ class FrameProcessing:
 
         # output png
         if png_q is not None:
-            noise = None
-            
-            y = np_array[:, :, 0]
-            u = np_array[:, :, 1]
-            v = np_array[:, :, 2]
-
-            if self.__noise is not None:
-                noise = np.random.normal(0, 50, y.shape)
-                if self.__noise == 'y':
-                    y = y + noise
-                elif self.__noise == 'u':
-                    u = u + noise
-                elif self.__noise == 'v':
-                    v = v + noise
-
-            r = 1.164 * (y - 16) + 1.596 * (v - 128)
-            g = 1.164 * (y - 16) - 0.813 * (v - 128) - 0.392 * (u - 128)
-            b = 1.164 * (y - 16) + 2.017 * (u - 128)
-
-            if self.__noise is not None:
-                if self.__noise == 'r':
-                    r = r + noise
-                elif self.__noise == 'g':
-                    g = g + noise
-                elif self.__noise == 'b':
-                    b = b + noise
-
-            r = np.clip(r, 0, 255).astype(np.uint8)
-            g = np.clip(g, 0, 255).astype(np.uint8)
-            b = np.clip(b, 0, 255).astype(np.uint8)
-            rgb = np.stack((r, g, b), axis=-1)
-            png_q.put((rgb, frame_index))
+            self.__output_to_pngs((np_array, frame_index), png_q)
 
         # output video
-        if output_q is not None:
-            np_array_uint8 = np.array(np_array, dtype=np.uint8)
-            yuv_frame = bytearray()
-            yuv_frame.extend(Identifier.FRAME.value)
+        if video_q is not None:
+            self.__output_to_video((np_array, frame_index), video_q)
 
-            yuv_frame.extend(np_array_uint8[:, :, 0].tobytes())
-            if self.__upscale == YUVFormat.YUV420:
-                yuv_frame.extend(np_array_uint8[::2, ::2, 1].tobytes())
-                yuv_frame.extend(np_array_uint8[::2, ::2, 2].tobytes())
-            elif self.__upscale == YUVFormat.YUV422:
-                yuv_frame.extend(np_array_uint8[:, ::2, 1].tobytes())
-                yuv_frame.extend(np_array_uint8[:, ::2, 2].tobytes())
-            else:
-                yuv_frame.extend(np_array_uint8[:, :, 1].tobytes())
-                yuv_frame.extend(np_array_uint8[:, :, 2].tobytes())
-            output_q.put((frame_index, yuv_frame))
+        # output y_only
+        if y_only_q is not None:
+            self.__output_to_y_only_files((np_array, frame_index), y_only_q)
 
         return
+    
+    def __get_padding(self, width, height):
+        i = self.config['params']['i']
+        return (math.ceil(width / i) * i - width, math.ceil(height / i) * i - height)
+    
+    def __output_to_pngs(self, data, q):
+        np_array, frame_index = data
+        noise = None
+        
+        y = np_array[:, :, 0]
+        u = np_array[:, :, 1]
+        v = np_array[:, :, 2]
+
+        if self.__noise is not None:
+            noise = np.random.normal(0, 50, y.shape)
+            if self.__noise == 'y':
+                y = y + noise
+            elif self.__noise == 'u':
+                u = u + noise
+            elif self.__noise == 'v':
+                v = v + noise
+
+        r = 1.164 * (y - 16) + 1.596 * (v - 128)
+        g = 1.164 * (y - 16) - 0.813 * (v - 128) - 0.392 * (u - 128)
+        b = 1.164 * (y - 16) + 2.017 * (u - 128)
+
+        if self.__noise is not None:
+            if self.__noise == 'r':
+                r = r + noise
+            elif self.__noise == 'g':
+                g = g + noise
+            elif self.__noise == 'b':
+                b = b + noise
+
+        r = np.clip(r, 0, 255).astype(np.uint8)
+        g = np.clip(g, 0, 255).astype(np.uint8)
+        b = np.clip(b, 0, 255).astype(np.uint8)
+        rgb = np.stack((r, g, b), axis=-1)
+        q.put((rgb, frame_index))
+    
+    def __output_to_video(self, data, q):
+        np_array, frame_index = data
+
+        np_array_uint8 = np.array(np_array, dtype=np.uint8)
+        yuv_frame = bytearray()
+        yuv_frame.extend(Identifier.FRAME.value)
+
+        yuv_frame.extend(np_array_uint8[:, :, 0].tobytes())
+        if self.__upscale == YUVFormat.YUV420:
+            yuv_frame.extend(np_array_uint8[::2, ::2, 1].tobytes())
+            yuv_frame.extend(np_array_uint8[::2, ::2, 2].tobytes())
+        elif self.__upscale == YUVFormat.YUV422:
+            yuv_frame.extend(np_array_uint8[:, ::2, 1].tobytes())
+            yuv_frame.extend(np_array_uint8[:, ::2, 2].tobytes())
+        else:
+            yuv_frame.extend(np_array_uint8[:, :, 1].tobytes())
+            yuv_frame.extend(np_array_uint8[:, :, 2].tobytes())
+        q.put((frame_index, yuv_frame))
+    
+    def __output_to_y_only_files(self, data, q):
+        np_array, frame_index = data
+        # padding
+        np_array_uint8 = np.array(np_array, dtype=np.uint8)
+        q.put((np_array_uint8[:, :, 0], "{}.y-only".format(frame_index)))
+        y_only_array = np_array[:, :, 0]
+        
+        pad_width, pad_height = self.__get_padding(y_only_array.shape[1], y_only_array.shape[0])
+        y_only_padded = np.pad(y_only_array, ((0, pad_height), (0, pad_width)), 'constant', constant_values=128)
+        
+        params_i = self.config['params']['i']
+        offset = y_only_padded.shape[1] // params_i
+        block_size = params_i ** 2
+        # combine i rows into 1 row
+        # group into i x 1, with <x> channels
+        a = y_only_padded.reshape(params_i, -1, params_i, 1) # (i, -1, i, <x>)
+        b = []
+        # for loop width // i
+        # select every i-th column
+        # group into one array, size = i**2 * 3
+        # = one block in a row, raster order
+        for i in range(offset):
+            b.append(a[:, i::offset].reshape(-1, block_size * 1)) # [all rows, start::step = width // i] (-1, i**2 * <x>))
+
+        # combine into 1 array
+        # group into i x i, with <x> channels
+        # each row has width // i blocks
+        c = np.block(b).reshape(-1, offset, block_size) # (-1,  width // i, i**2)
+
+        # average block
+        average_block = c.mean(2).round().astype(int).reshape(-1, offset, 1).repeat(block_size, 2)
+
+        # reshape to original form
+        d = average_block.reshape(-1, offset, params_i, params_i)
+        e = []
+        for i in range(offset):
+            e.append(d[:, i].reshape(-1, params_i))
+        y_only_averaged_array = np.block(e)
+        if not y_only_padded.shape == y_only_averaged_array.shape:
+            raise Exception('Shape mismatch.')
+        
+        y_only_averaged_array_uint8 = np.array(y_only_averaged_array, dtype=np.uint8)
+        q.put((y_only_averaged_array_uint8, "{}.y-only-averaged".format(frame_index)))
+
+        # difference
+        if 'diff_factor' in self.config['params']:
+            y_only_diff = (y_only_padded - y_only_averaged_array) * self.config['params']['diff_factor']
+            y_only_diff_uint8 = np.array(y_only_diff, dtype=np.uint8)
+            q.put((y_only_diff_uint8, "{}.y-only-diff".format(frame_index)))
