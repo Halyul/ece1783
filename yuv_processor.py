@@ -71,7 +71,7 @@ class YUVProcessor:
         self.file = pathlib.Path.cwd().joinpath(self.file_path)
         if not self.file.exists():
             raise FileNotFoundError('File not found.')
-        self.__mp = MultiProcessFW(self.__config)
+        self.__mp = MultiProcessorYUV(self.__config)
         self.info = {
             'format': '',
             'width': '',
@@ -279,7 +279,7 @@ class YUVProcessor:
         self.info[key] += value
         return
 
-class MultiProcessFW:
+class MultiProcessorYUV:
 
     def __init__(self, config) -> None:
         self.__config = config
@@ -473,7 +473,7 @@ class FrameProcessing:
         self.__config = config
         self.config = self.__config.config
         self.__upscale = upscale
-        self.__noise = self.config['noise'] if 'noise' in self.config else None
+        self.__noise = self.config['output']['pngs']['noise'] if 'pngs' in self.config['output'] and 'noise' in self.config['output']['pngs'] else None
 
     """
         Upscale the frame to YUV444.
@@ -628,7 +628,6 @@ class FrameProcessing:
         q.put((y_only_averaged_array_uint8, "{}.y-only-averaged".format(frame_index)))
 
         # difference
-        if 'diff_factor' in self.config['params']:
-            y_only_diff = (y_only_padded - y_only_averaged_array) * self.config['params']['diff_factor']
-            y_only_diff_uint8 = np.array(y_only_diff, dtype=np.uint8)
-            q.put((y_only_diff_uint8, "{}.y-only-diff".format(frame_index)))
+        if 'diff_factor' in self.config['output']['y_only']:
+            y_only_padded_uint8 = np.array(y_only_padded, dtype=np.uint8)
+            q.put((y_only_padded_uint8, "{}.y-only-padded".format(frame_index)))

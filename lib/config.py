@@ -14,4 +14,4 @@ class Config:
             raise
     
     def get_output_path(self, key):
-        return pathlib.Path.cwd().joinpath(self.config['output'][key]) if key in self.config['output'] else None
+        return pathlib.Path.cwd().joinpath(self.config['output'][key]['path']) if key in self.config['output'] else None
