@@ -5,8 +5,10 @@ import multiprocessing as mp
 from enum import Enum
 import numpy as np
 from PIL import Image
+from typing import Callable as function
 
 from lib.config import Config
+from lib.misc import get_padding, yuv2rgb
 
 class YUVFormat(Enum):
     YUV444 = 444
@@ -64,7 +66,7 @@ class YUVProcessor:
         'mono': 'YCbCr plane only',
     }
     
-    def __init__(self, config_path):
+    def __init__(self, config_path: str):
         self.__config = Config(config_path)
         self.config = self.__config.config
         self.file_path = self.config['input']
@@ -198,7 +200,6 @@ class YUVProcessor:
             # when exit, self.__byte == self.END_IDENTIFIER
             self.__read_byte()
 
-        mode = None
         while not self.__eof():
             
             result = bytearray()
@@ -225,7 +226,7 @@ class YUVProcessor:
         Return the offsets of the YUV file.
 
         Returns:
-            offsets (tuple): The offsets of the YUV file.
+            (y, u, v) (tuple): The offsets of the YUV file.
     """
     def __get_offsets(self) -> tuple:
         y_length = int(self.info['width']) * int(self.info['height'])
@@ -275,13 +276,13 @@ class YUVProcessor:
             key (str): The key of the header info.
             value (str): The value to be appended.
     """
-    def append_to_header_info(self, key, value):
+    def append_to_header_info(self, key: str, value: str):
         self.info[key] += value
         return
 
 class MultiProcessorYUV:
 
-    def __init__(self, config) -> None:
+    def __init__(self, config: dict):
         self.__config = config
         self.manager = mp.Manager()
         self.pool = mp.Pool(mp.cpu_count() + 2)
@@ -347,7 +348,7 @@ class MultiProcessorYUV:
             data (tuple): The data to be passed to the function.
             debug (bool): True if debug mode is on.
     """
-    def dispatch(self, func, data, debug=False):
+    def dispatch(self, func: function, data: tuple, debug: bool=False):
         if debug:
             func(data, (
                 self.video_q, 
@@ -372,7 +373,7 @@ class MultiProcessorYUV:
         Parameters:
             data (bytearray): The data to be added to the queue.
     """
-    def add_to_video_q(self, data):
+    def add_to_video_q(self, data: bytearray):
         if self.__video_path is not None:
             self.video_q.put((-1, data))
         return
@@ -385,7 +386,7 @@ class MultiProcessorYUV:
             q (mp.Queue): The queue to get data from.
     """
     @staticmethod
-    def write_to_y_only_file(path, q):
+    def write_to_y_only_file(path: pathlib.Path, q: mp.Queue):
         while True:
             data = q.get()
             if data == 'kill':
@@ -403,7 +404,7 @@ class MultiProcessorYUV:
             q (mp.Queue): The queue to get data from.
     """
     @staticmethod
-    def write_to_png(path, q):
+    def write_to_png(path: pathlib.Path, q: mp.Queue):
         while True:
             data = q.get()
             if data == 'kill':
@@ -422,7 +423,7 @@ class MultiProcessorYUV:
             q (mp.Queue): The queue to get data from.
     """
     @staticmethod
-    def write_raw_bytes_to_file(file, q):
+    def write_raw_bytes_to_file(file: pathlib.Path, q: mp.Queue):
         next_expected_frame = 0
         pending_frames = {}
         with file.open("wb") as f:
@@ -469,7 +470,7 @@ class MultiProcessorYUV:
     
 class FrameProcessing:
 
-    def __init__(self, config, upscale) -> None:
+    def __init__(self, config: dict, upscale: YUVFormat) -> None:
         self.__config = config
         self.config = self.__config.config
         self.__upscale = upscale
@@ -479,10 +480,10 @@ class FrameProcessing:
         Upscale the frame to YUV444.
 
         Parameters:
-            data (tuple): The data to be processed.
-            queues (tuple): The queues to put data to.
+            (width, frame_index, format_tuple, yuv_components, mode) (tuple): Args.
+            (video_q, png_q, y_only_q) (tuple): The queues to put data to.
     """
-    def upscale(self, data, queues):
+    def upscale(self, data: tuple, queues: tuple):
         (width, frame_index, format_tuple, yuv_components, mode) = data
         (video_q, png_q, y_only_q) = queues
 
@@ -525,11 +526,15 @@ class FrameProcessing:
 
         return
     
-    def __get_padding(self, width, height):
-        i = self.config['params']['i']
-        return (math.ceil(width / i) * i - width, math.ceil(height / i) * i - height)
-    
-    def __output_to_pngs(self, data, q):
+    """
+        Output the frame to pngs.
+
+        Parameters:
+            (np_array, frame_index) (tuple): Args.
+            q (mp.Queue): The queue to put data to.
+
+    """
+    def __output_to_pngs(self, data: tuple, q: mp.Queue):
         np_array, frame_index = data
         noise = None
         
@@ -546,9 +551,7 @@ class FrameProcessing:
             elif self.__noise == 'v':
                 v = v + noise
 
-        r = 1.164 * (y - 16) + 1.596 * (v - 128)
-        g = 1.164 * (y - 16) - 0.813 * (v - 128) - 0.392 * (u - 128)
-        b = 1.164 * (y - 16) + 2.017 * (u - 128)
+        r, g, b, _ = yuv2rgb(y, u, v)
 
         if self.__noise is not None:
             if self.__noise == 'r':
@@ -564,7 +567,14 @@ class FrameProcessing:
         rgb = np.stack((r, g, b), axis=-1)
         q.put((rgb, frame_index))
     
-    def __output_to_video(self, data, q):
+    """
+        Output the frame to video.
+
+        Parameters:
+            (np_array, frame_index) (tuple): Args.
+            q (mp.Queue): The queue to put data to.
+    """
+    def __output_to_video(self, data: tuple, q: mp.Queue):
         np_array, frame_index = data
 
         np_array_uint8 = np.array(np_array, dtype=np.uint8)
@@ -583,14 +593,25 @@ class FrameProcessing:
             yuv_frame.extend(np_array_uint8[:, :, 2].tobytes())
         q.put((frame_index, yuv_frame))
     
-    def __output_to_y_only_files(self, data, q):
+    """
+        Output the frame to y-only files.
+        
+        Parameters:
+            (np_array, frame_index) (tuple): Args.
+            q (mp.Queue): The queue to put data to.
+    """
+    def __output_to_y_only_files(self, data: tuple, q: mp.Queue):
         np_array, frame_index = data
         # padding
         np_array_uint8 = np.array(np_array, dtype=np.uint8)
         q.put((np_array_uint8[:, :, 0], "{}.y-only".format(frame_index)))
         y_only_array = np_array[:, :, 0]
         
-        pad_width, pad_height = self.__get_padding(y_only_array.shape[1], y_only_array.shape[0])
+        width = y_only_array.shape[1]
+        height = y_only_array.shape[0]
+        paded_width, paded_height = get_padding(width, height, self.config['params']['i'])
+        pad_width = paded_width - width
+        pad_height = paded_height - height
         y_only_padded = np.pad(y_only_array, ((0, pad_height), (0, pad_width)), 'constant', constant_values=128)
         
         params_i = self.config['params']['i']
