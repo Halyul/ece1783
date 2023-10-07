@@ -1,23 +1,13 @@
 import pathlib
 import shutil
-import multiprocessing as mp
-from enum import Enum
-import numpy as np
 from PIL import Image
-from typing import Callable as function
 
-from lib.config import Config
-from lib.misc import get_padding, yuv2rgb
+from lib.utils.config import Config
+from lib.utils.enums import YUVFormat, Identifier
 
-class YUVFormat(Enum):
-    YUV444 = 444
-    YUV422 = 422
-    YUV420 = 420
-
-class Identifier(Enum):
-    FRAME = b'FRAME\n'
-    END = 0x0A.to_bytes()
-    SPACER = 0x20.to_bytes()
+from lib.output import to_y_only_files, to_video, to_pngs
+from lib.blueprints.multi_processing import MultiProcessing
+from lib.frame_processing import upscale
 
 class YUVProcessor:
 
@@ -72,7 +62,7 @@ class YUVProcessor:
         self.file = pathlib.Path.cwd().joinpath(self.file_path)
         if not self.file.exists():
             raise FileNotFoundError('File not found.')
-        self.__mp = MultiProcessorYUV(self.__config)
+        self.__mp = MP(self.__config)
         self.info = {
             'format': '',
             'width': '',
@@ -98,8 +88,7 @@ class YUVProcessor:
             else:
                 self.upscale = YUVFormat.YUV444
         self.__offsets = None
-        self.__frame_processor = FrameProcessing(self.__config, self.upscale)
-        self.__debug = self.config['debug'] if 'debug' in self.config else False
+        self.__func = self.config['output']['func']
         self.__deconstruct()
         return
     
@@ -186,13 +175,23 @@ class YUVProcessor:
         raw_header.extend(self.HEADER_IDENTIFIERS['COLOR_SPACE'])
         raw_header.extend(bytes(str(self.upscale.value), 'ascii')) # add upscale
         raw_header.extend(self.__byte) # add END_IDENTIFIER
-        self.__mp.add_to_video_q(raw_header)
+        if self.__func == 'video':
+            self.__mp.append(raw_header)
         return
     
     """
         Read the frames of the YUV file, and then upscale to YUV444.
     """
     def __read_frames(self) -> None:
+        if self.__func == 'y_only':
+            callback = to_y_only_files
+            callback_args = (self.config['params']['i'], self.config['params']['diff_factor'],)
+        elif self.__func == 'pngs':
+            callback = to_pngs
+            callback_args = (self.config['output']['args']['noise'] if 'noise' in self.config['output']['args'] else None,)
+        elif self.__func == 'video':
+            callback = to_video
+            callback_args = (self.upscale,)
         self.__read_byte() # skil END_IDENTIFIER, after this line, self.__byte == b'F'
         while self.__byte != Identifier.END.value:
             # skip first "FRAME"
@@ -215,7 +214,14 @@ class YUVProcessor:
                 yuv_components = result[:-len(Identifier.FRAME.value)]
 
             # process each frame
-            self.__mp.dispatch(self.__frame_processor.upscale, (self.info['width'], self.__frame_index, self.__offsets, yuv_components, self.__format), self.__debug)
+            self.__mp.dispatch(
+                upscale, 
+                (
+                    (self.info['width'], self.__frame_index, self.__offsets, yuv_components, self.__format),
+                    callback,
+                    callback_args
+                )
+            )
             print(self.__frame_index)
             self.__frame_index += 1
         
@@ -279,375 +285,96 @@ class YUVProcessor:
         self.info[key] += value
         return
 
-class MultiProcessorYUV:
-
-    def __init__(self, config: dict):
-        self.__config = config
-        self.manager = mp.Manager()
-        self.pool = mp.Pool(mp.cpu_count() + 2)
-        self.jobs = []
-
-        self.__video_path = self.__config.get_output_path('video')
-        self.__png_path = self.__config.get_output_path('pngs')
-        self.__y_only_path = self.__config.get_output_path('y_only')
-        self.video_q = None
-        if self.__video_path is not None:
-            self.video_q = self.manager.Queue()
-            self.output_watcher = self.pool.apply_async(self.write_raw_bytes_to_file, (self.__video_path, self.video_q,))
-            self.__clear_output_path()
-
-        self.png_q = None
-        if self.__png_path is not None:
-            self.png_q = self.manager.Queue()
-            self.png_watcher = self.pool.apply_async(self.write_to_png, (self.__png_path, self.png_q,))
-            self.__clear_png_path()
-            pathlib.Path.cwd().joinpath(self.__png_path).mkdir(parents=True, exist_ok=True)
-
-        self.y_only_q = None
-        if self.__y_only_path is not None:
-            self.y_only_q = self.manager.Queue()
-            self.y_only_watcher = self.pool.apply_async(self.write_to_y_only_file, (self.__y_only_path, self.y_only_q,))
-            self.__clear_y_only_path()
-            pathlib.Path.cwd().joinpath(self.__y_only_path).mkdir(parents=True, exist_ok=True)
+class MP(MultiProcessing):
 
     """
-        Clear the output video path.
+        See set_path@MultiProcessing
     """
-    def __clear_output_path(self):
-        if self.__video_path is not None:
-            pathlib.Path.cwd().joinpath(self.__video_path.parent).mkdir(parents=True, exist_ok=True)
-            if self.__video_path.exists():
-                self.__video_path.unlink()
-                self.__video_path.write_bytes(b'')
-        return
+    def set_path(self):
+        self.path = self.config_class.get_output_path()
+        self.func = self.config_class.get_output_func()
+
+    """
+        See clear@MultiProcessing
+    """
+    def clear(self):
+        if self.func == 'y_only':
+            if self.path.exists():
+                shutil.rmtree(self.path)
+            pathlib.Path.cwd().joinpath(self.path).mkdir(parents=True, exist_ok=True)
+        elif self.func == 'pngs':
+            if self.path.exists():
+                shutil.rmtree(self.path)
+            pathlib.Path.cwd().joinpath(self.path).mkdir(parents=True, exist_ok=True)
+        elif self.func == 'video':
+            pathlib.Path.cwd().joinpath(self.path.parent).mkdir(parents=True, exist_ok=True)
+            if self.path.exists():
+                self.path.unlink()
+                self.path.write_bytes(b'')
     
     """
-        Clear the png path.
-    """
-    def __clear_png_path(self):
-        if self.__png_path is not None:
-            if self.__png_path.exists():
-                shutil.rmtree(self.__png_path)
-        return
-
-    """
-        Clear the y_only path.
-    """
-    def __clear_y_only_path(self):
-        if self.__y_only_path is not None:
-            if self.__y_only_path.exists():
-                shutil.rmtree(self.__y_only_path)
-        return
-
-    """
-        Run a function in parallel.
-
-        Parameters:
-            func (function): The function to be run in parallel.
-            data (tuple): The data to be passed to the function.
-            debug (bool): True if debug mode is on.
-    """
-    def dispatch(self, func: function, data: tuple, debug: bool=False):
-        if debug:
-            func(data, (
-                self.video_q, 
-                self.png_q,
-                self.y_only_q
-            ))
-        else:
-            job = self.pool.apply_async(func=func, args=(
-                data, 
-                (
-                    self.video_q, 
-                    self.png_q,
-                    self.y_only_q
-                ),
-            ))
-            self.jobs.append(job)
-        return
-    
-    """
-        Add data to output video queue.
-
-        Parameters:
-            data (bytearray): The data to be added to the queue.
-    """
-    def add_to_video_q(self, data: bytearray):
-        if self.__video_path is not None:
-            self.video_q.put((-1, data))
-        return
-    
-    """
-        Write Y-only frame to file.
-        
-        Parameters:
-            path (pathlib.Path): The path of the png file.
-            q (mp.Queue): The queue to get data from.
+        See write@MultiProcessing
     """
     @staticmethod
-    def write_to_y_only_file(path: pathlib.Path, q: mp.Queue):
-        while True:
-            data = q.get()
-            if data == 'kill':
-                break
-            (y, frame_index) = data
-            path.joinpath('{}'.format(frame_index)).write_bytes(y)
-            print('done write ', frame_index)
-        return
-
-    """
-        Write RGB to png file.
-        
-        Parameters:
-            path (pathlib.Path): The path of the png file.
-            q (mp.Queue): The queue to get data from.
-    """
-    @staticmethod
-    def write_to_png(path: pathlib.Path, q: mp.Queue):
-        while True:
-            data = q.get()
-            if data == 'kill':
-                break
-            (rgb, frame_index) = data
-            img = Image.fromarray(rgb)
-            img.save(path.joinpath('{}.png'.format(frame_index)))
-            print('done write png', frame_index)
-        return
-    
-    """
-        Write raw bytes to a video file.
-
-        Parameters:
-            file (pathlib.Path): The path of the video file.
-            q (mp.Queue): The queue to get data from.
-    """
-    @staticmethod
-    def write_raw_bytes_to_file(file: pathlib.Path, q: mp.Queue):
-        next_expected_frame = 0
-        pending_frames = {}
-        with file.open("wb") as f:
+    def write(func, path, q) -> None:
+        if func == 'y_only':
             while True:
                 data = q.get()
                 if data == 'kill':
                     break
-                frame_index, frame = data
-                if frame_index == -1:
-                    f.write(frame)
-                    f.flush()
-                    continue
-                if frame_index == next_expected_frame:
-                    f.write(frame)
-                    f.flush()
-                    next_expected_frame += 1
-                    while next_expected_frame in pending_frames:
-                        f.write(pending_frames.pop(next_expected_frame))
-                        print('done write pending frame', next_expected_frame)
+                (y, frame_index) = data
+                path.joinpath('{}'.format(frame_index)).write_bytes(y)
+                print('done write ', frame_index)
+        elif func == 'pngs':
+            while True:
+                data = q.get()
+                if data == 'kill':
+                    break
+                (rgb, frame_index) = data
+                img = Image.fromarray(rgb)
+                img.save(path.joinpath('{}.png'.format(frame_index)))
+                print('done write png', frame_index)
+        elif func == 'video':
+            next_expected_frame = 0
+            pending_frames = {}
+            with path.open("wb") as f:
+                while True:
+                    data = q.get()
+                    if data == 'kill':
+                        break
+                    frame_index, frame = data
+                    if frame_index == -1:
+                        f.write(frame)
+                        f.flush()
+                        continue
+                    if frame_index == next_expected_frame:
+                        f.write(frame)
                         f.flush()
                         next_expected_frame += 1
-                else:
-                    pending_frames[frame_index] = frame
-                    print('added to pending frames', frame_index)
-        return
+                        while next_expected_frame in pending_frames:
+                            f.write(pending_frames.pop(next_expected_frame))
+                            print('done write pending frame', next_expected_frame)
+                            f.flush()
+                            next_expected_frame += 1
+                    else:
+                        pending_frames[frame_index] = frame
+                        print('added to pending frames', frame_index)
     
     """
-        Wait all processes to be done.
+        See done@MultiProcessing
     """
     def done(self):
         for job in self.jobs: 
             job.get()
         
-        if self.__video_path is not None:
-            self.video_q.put('kill')
-        if self.__png_path is not None:
-            self.png_q.put('kill')
-        if self.__y_only_path is not None:
-            self.y_only_q.put('kill')
+        self.q.put('kill')
         self.pool.close()
         self.pool.join()
 
+    """
+        See append@MultiProcessing
+    """
+    def append(self, data: bytearray):
+        if self.path is not None:
+            self.q.put((-1, data))
         return
-    
-class FrameProcessing:
-
-    def __init__(self, config: dict, upscale: YUVFormat) -> None:
-        self.__config = config
-        self.config = self.__config.config
-        self.__upscale = upscale
-        self.__noise = self.config['output']['pngs']['noise'] if 'pngs' in self.config['output'] and 'noise' in self.config['output']['pngs'] else None
-
-    """
-        Upscale the frame to YUV444.
-
-        Parameters:
-            (width, frame_index, format_tuple, yuv_components, mode) (tuple): Args.
-            (video_q, png_q, y_only_q) (tuple): The queues to put data to.
-    """
-    def upscale(self, data: tuple, queues: tuple):
-        (width, frame_index, format_tuple, yuv_components, mode) = data
-        (video_q, png_q, y_only_q) = queues
-
-        pixel_list = []
-
-        for i in range(format_tuple[0]):
-            y_component = yuv_components[i]
-            current_row = i // width
-            current_col = i % width
-            if mode == YUVFormat.YUV420:
-                # YUV420
-                u_component = yuv_components[format_tuple[0] + current_row // 2 * width // 2 + current_col // 2]
-                v_component = yuv_components[format_tuple[0] + format_tuple[1] + current_row // 2 * width // 2 + current_col // 2]
-            elif mode == YUVFormat.YUV422:
-                # YUV422
-                u_component = yuv_components[format_tuple[0] + i // 2]
-                v_component = yuv_components[format_tuple[0] + format_tuple[1] + i // 2]
-            else:
-                # YUV444
-                u_component = yuv_components[format_tuple[0] + i]
-                v_component = yuv_components[format_tuple[0] + format_tuple[1] + i]
-                break
-            if i % width == 0:
-                pixel_list.append([])
-            pixel_list[current_row].append([y_component, u_component, v_component])
-
-        np_array = np.array(pixel_list)
-
-        # output png
-        if png_q is not None:
-            self.__output_to_pngs((np_array, frame_index), png_q)
-
-        # output video
-        if video_q is not None:
-            self.__output_to_video((np_array, frame_index), video_q)
-
-        # output y_only
-        if y_only_q is not None:
-            self.__output_to_y_only_files((np_array, frame_index), y_only_q)
-
-        return
-    
-    """
-        Output the frame to pngs.
-
-        Parameters:
-            (np_array, frame_index) (tuple): Args.
-            q (mp.Queue): The queue to put data to.
-
-    """
-    def __output_to_pngs(self, data: tuple, q: mp.Queue):
-        np_array, frame_index = data
-        noise = None
-        
-        y = np_array[:, :, 0]
-        u = np_array[:, :, 1]
-        v = np_array[:, :, 2]
-
-        if self.__noise is not None:
-            noise = np.random.normal(0, 50, y.shape)
-            if self.__noise == 'y':
-                y = y + noise
-            elif self.__noise == 'u':
-                u = u + noise
-            elif self.__noise == 'v':
-                v = v + noise
-
-        r, g, b, _ = yuv2rgb(y, u, v)
-
-        if self.__noise is not None:
-            if self.__noise == 'r':
-                r = r + noise
-            elif self.__noise == 'g':
-                g = g + noise
-            elif self.__noise == 'b':
-                b = b + noise
-
-        r = np.clip(r, 0, 255).astype(np.uint8)
-        g = np.clip(g, 0, 255).astype(np.uint8)
-        b = np.clip(b, 0, 255).astype(np.uint8)
-        rgb = np.stack((r, g, b), axis=-1)
-        q.put((rgb, frame_index))
-    
-    """
-        Output the frame to video.
-
-        Parameters:
-            (np_array, frame_index) (tuple): Args.
-            q (mp.Queue): The queue to put data to.
-    """
-    def __output_to_video(self, data: tuple, q: mp.Queue):
-        np_array, frame_index = data
-
-        np_array_uint8 = np.array(np_array, dtype=np.uint8)
-        yuv_frame = bytearray()
-        yuv_frame.extend(Identifier.FRAME.value)
-
-        yuv_frame.extend(np_array_uint8[:, :, 0].tobytes())
-        if self.__upscale == YUVFormat.YUV420:
-            yuv_frame.extend(np_array_uint8[::2, ::2, 1].tobytes())
-            yuv_frame.extend(np_array_uint8[::2, ::2, 2].tobytes())
-        elif self.__upscale == YUVFormat.YUV422:
-            yuv_frame.extend(np_array_uint8[:, ::2, 1].tobytes())
-            yuv_frame.extend(np_array_uint8[:, ::2, 2].tobytes())
-        else:
-            yuv_frame.extend(np_array_uint8[:, :, 1].tobytes())
-            yuv_frame.extend(np_array_uint8[:, :, 2].tobytes())
-        q.put((frame_index, yuv_frame))
-    
-    """
-        Output the frame to y-only files.
-        
-        Parameters:
-            (np_array, frame_index) (tuple): Args.
-            q (mp.Queue): The queue to put data to.
-    """
-    def __output_to_y_only_files(self, data: tuple, q: mp.Queue):
-        np_array, frame_index = data
-        # padding
-        np_array_uint8 = np.array(np_array, dtype=np.uint8)
-        q.put((np_array_uint8[:, :, 0], "{}.y-only".format(frame_index)))
-        y_only_array = np_array[:, :, 0]
-        
-        width = y_only_array.shape[1]
-        height = y_only_array.shape[0]
-        paded_width, paded_height = get_padding(width, height, self.config['params']['i'])
-        pad_width = paded_width - width
-        pad_height = paded_height - height
-        y_only_padded = np.pad(y_only_array, ((0, pad_height), (0, pad_width)), 'constant', constant_values=128)
-        
-        params_i = self.config['params']['i']
-        offset = y_only_padded.shape[1] // params_i
-        block_size = params_i ** 2
-        # combine i rows into 1 row
-        # group into i x 1, with <x> channels
-        a = y_only_padded.reshape(params_i, -1, params_i, 1) # (i, -1, i, <x>)
-        b = []
-        # for loop width // i
-        # select every i-th column
-        # group into one array, size = i**2 * 3
-        # = one block in a row, raster order
-        for i in range(offset):
-            b.append(a[:, i::offset].reshape(-1, block_size * 1)) # [all rows, start::step = width // i] (-1, i**2 * <x>))
-
-        # combine into 1 array
-        # group into i x i, with <x> channels
-        # each row has width // i blocks
-        c = np.block(b).reshape(-1, offset, block_size) # (-1,  width // i, i**2)
-
-        # average block
-        average_block = c.mean(2).round().astype(int).reshape(-1, offset, 1).repeat(block_size, 2)
-
-        # reshape to original form
-        d = average_block.reshape(-1, offset, params_i, params_i)
-        e = []
-        for i in range(offset):
-            e.append(d[:, i].reshape(-1, params_i))
-        y_only_averaged_array = np.block(e)
-        if not y_only_padded.shape == y_only_averaged_array.shape:
-            raise Exception('Shape mismatch.')
-        
-        y_only_averaged_array_uint8 = np.array(y_only_averaged_array, dtype=np.uint8)
-        q.put((y_only_averaged_array_uint8, "{}.y-only-averaged".format(frame_index)))
-
-        # difference
-        if 'diff_factor' in self.config['output']['y_only']:
-            y_only_padded_uint8 = np.array(y_only_padded, dtype=np.uint8)
-            q.put((y_only_padded_uint8, "{}.y-only-padded".format(frame_index)))
