@@ -3,8 +3,8 @@ from matplotlib import pyplot as plt
 import argparse
 import pathlib
 import numpy as np
-from lib.config import Config
-from lib.misc import get_padding, yuv2rgb
+from lib.utils.config import Config
+from lib.utils.misc import get_padding, yuv2rgb
 
 CONFIG = Config('config.yaml').config
 
@@ -50,7 +50,7 @@ if __name__ == '__main__':
         averaged_data = np.frombuffer(averaged_file_bytes, dtype=np.uint8).reshape(pad_height, pad_width)
         padded_file_data = np.frombuffer(padded_file_bytes, dtype=np.uint8).reshape(pad_height, pad_width)
         
-        data = (averaged_data - padded_file_data) * CONFIG['output']['y_only']['diff_factor']
+        data = (averaged_data - padded_file_data) * CONFIG['params']['diff_factor']
     
     plt.imshow(data, interpolation='nearest')
     plt.show()
