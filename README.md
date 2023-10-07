@@ -9,3 +9,8 @@ $ ./ploter.py y_only/0.y-only --h 288 --v
 ```bash
 $ ./ploter.py y_only/0.y-only --h 288
 ```
+
+## PSNR and SSIM
+```bash
+$ ./psnr_ssim.py y_only/0.y-only-padded y_only/0.y-only-averaged --h 288
+```
