@@ -1,6 +1,5 @@
 import pathlib
 import shutil
-import math
 import multiprocessing as mp
 from enum import Enum
 import numpy as np
