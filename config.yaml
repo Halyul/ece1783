@@ -1,0 +1,17 @@
+debug: false
+input: videos/foreman_cif.y4m
+upscale: 444 # used in output_video
+output:
+  func: y_only
+  args:
+    path: y_only
+  # func: video
+  # args:
+  #   path: outputs/foreman_cif444.y4m
+  # func: pngs
+  # args:
+  #   path: pngs
+  #   noise: y # r, g, b, y, u, v, one at a time for png only
+params:
+  i: 2
+  diff_factor: 10

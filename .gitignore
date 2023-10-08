@@ -1,0 +1,6 @@
+pngs/*
+videos/*
+outputs/*
+.DS_Store
+y_only/*
+*__pycache__*
