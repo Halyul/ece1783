@@ -177,5 +177,84 @@ l = [
 ]
 """
 
-print(np.array_equal(f, block_create(a[:,:,0], i)[0]))
-print(np.array_equal(l, pixel_create(h, (height, width), i)))
+# print(np.array_equal(f, block_create(a[:,:,0], i)[0]))
+# print(np.array_equal(l, pixel_create(h, (height, width), i)))
+
+
+b1 = a[:, :, 0]
+r = 4
+i = 4
+
+# set the top left corner of the current block
+top_left = centered_top_left = (1, 1)
+# set the current block 
+centered_block = b1[top_left[0]:top_left[0] + i, top_left[1]:top_left[1] + i]
+# reshape for mae calculation
+centered_block_reshaped = centered_block.reshape(i*i)
+# set the bottom right corner of the current block
+bottom_right = (top_left[0] + i, top_left[1] + i)
+
+# set the top left corner of the search window
+y_offset = top_left[0] - r
+if y_offset >= 0:
+    top_left = (y_offset, top_left[1])
+    bottom_right = (bottom_right[0] + r, bottom_right[1])
+else:
+    top_left = (0, top_left[1])
+    bottom_right = (bottom_right[0] + r, bottom_right[1])
+
+# set the bottom right corner of the search window
+x_offset = top_left[1] - r
+if x_offset >= 0:
+    top_left = (top_left[0], x_offset)
+    bottom_right = (bottom_right[0], bottom_right[1] + r)
+else:
+    top_left = (top_left[0], 0)
+    bottom_right = (bottom_right[0], bottom_right[1] + r)
+
+print(bottom_right)
+# search window
+c2 = b1[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
+print(centered_block)
+# print(c2)
+
+min_mae = -1
+min_motion_vector = None
+min_xy = None
+for y in range(0, c2.shape[0] - i + 1):
+    for x in range(0, c2.shape[1] - i + 1):
+        if centered_top_left[0] == y and centered_top_left[1] == x:
+            continue
+        d1 = c2[y:i + y, x:i + x]
+        # print(d1)
+        d2 = d1.reshape(i*i)
+        mae = np.abs(d2 - centered_block_reshaped).mean().astype(int)
+        motion_vector = (y - centered_top_left[0], x - centered_top_left[1])
+        # print(mae, motion_vector)
+        if min_mae == -1:
+            min_mae = mae
+            min_motion_vector = motion_vector
+            min_yx = (y, x)
+        elif mae < min_mae:
+            min_mae = mae
+            min_motion_vector = motion_vector
+            min_yx = (y, x)
+        elif mae == min_mae:
+            current_min_l1_norm = (abs(min_motion_vector[0]) + abs(min_motion_vector[1]))
+            new_min_l1_norm = (abs(motion_vector[0]) + abs(motion_vector[1]))
+            if new_min_l1_norm < current_min_l1_norm:
+                min_mae = mae
+                min_motion_vector = motion_vector
+                min_yx = (y, x)
+            elif new_min_l1_norm == current_min_l1_norm:
+                if y < min_yx[0]:
+                    min_mae = mae
+                    min_motion_vector = motion_vector
+                    min_yx = (y, x)
+                elif y == min_yx[0]:
+                    if x < min_yx[1]:
+                        min_mae = mae
+                        min_motion_vector = motion_vector
+                        min_yx = (y, x)
+
+print(min_mae, min_motion_vector, min_yx, b1[min_yx[0]:min_yx[0] + i, min_yx[1]:min_yx[1] + i])
