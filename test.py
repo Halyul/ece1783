@@ -220,7 +220,7 @@ print(centered_block)
 
 min_mae = -1
 min_motion_vector = None
-min_xy = None
+min_yx = None
 for y in range(0, c2.shape[0] - i + 1):
     for x in range(0, c2.shape[1] - i + 1):
         if centered_top_left[0] == y and centered_top_left[1] == x:
