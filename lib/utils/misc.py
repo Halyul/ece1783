@@ -42,3 +42,6 @@ def yuv2rgb(y: np.ndarray, u: np.ndarray = None, v: np.ndarray = None) -> np.nda
     
 def rounding(x, base):
     return base * round(x / base)
+
+def convert_within_range(np_array, dtype=np.uint8):
+    return np.clip(np_array, 0, 255).astype(dtype)

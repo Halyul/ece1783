@@ -1,11 +1,8 @@
 import pathlib
-import shutil
-from PIL import Image
-
 from lib.utils.config import Config
 from lib.utils.enums import YUVFormat, Identifier
+from lib.utils.misc import get_padding
 
-from lib.output import to_y_only_files, to_video, to_pngs
 from lib.frame_processing import upscale
 from lib.multi_processing import MultiProcessingNew as MP
 
@@ -88,7 +85,7 @@ class YUVProcessor:
             else:
                 self.upscale = YUVFormat.YUV444
         self.__offsets = None
-        self.__func = self.config['output']['func']
+        # self.__func = self.config['output']['func']
         self.__deconstruct()
         return
     
@@ -99,6 +96,9 @@ class YUVProcessor:
         self.__read_header()
         self.__read_frames()
         self.info['frame_count'] = self.__frame_index
+        paded_width, paded_height = get_padding(self.info['width'], self.info['height'], self.config['params']['i'])
+        pathlib.Path.cwd().joinpath(self.__config.get_output_path('main_folder'), self.__config.get_output_path('done_file')).write_text(str("{},{},{}".format(self.__frame_index, paded_height, paded_width)))
+
         self.__mp.done()
         return
     
@@ -175,8 +175,9 @@ class YUVProcessor:
         raw_header.extend(self.HEADER_IDENTIFIERS['COLOR_SPACE'])
         raw_header.extend(bytes(str(self.upscale.value), 'ascii')) # add upscale
         raw_header.extend(self.__byte) # add END_IDENTIFIER
-        if self.__func == 'video':
-            self.__mp.append(raw_header)
+        # if self.__func == 'video':
+        #     self.__mp.append(raw_header)
+        self.__mp.signal_q.put((self.info['height'], self.info['width']))
         return
     
     """
@@ -218,9 +219,10 @@ class YUVProcessor:
                 upscale, 
                 (
                     (self.info['width'], self.__frame_index, self.__offsets, yuv_components, self.__format),
-                    self.__mp.og_frame_q,
+                    self.__config,
                 )
             )
+            
             print(self.__frame_index)
             self.__frame_index += 1
             # break

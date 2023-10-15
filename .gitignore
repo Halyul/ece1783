@@ -5,3 +5,4 @@ outputs/*
 y_only/*
 *__pycache__*
 output/* 
+data/*

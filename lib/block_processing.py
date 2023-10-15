@@ -1,6 +1,5 @@
 import numpy as np
-import pathlib
-from lib.utils.misc import get_padding, rounding
+from lib.utils.misc import get_padding, rounding, convert_within_range
 
 """
     Transform the pixel-based frame into an i x i sized block-based frame.
@@ -113,18 +112,23 @@ def calc_motion_vector(block, block_coor, search_window, search_window_coor, par
 
     return min_motion_vector, min_mae, min_yx, min_block
 
-def calc_motion_vector_helper(frame, frame_index, prev_frame, params_i, params_r, reconstructed_q, write_data_q):
+"""
+    TODO: block-level parallelism
+"""
+def calc_motion_vector_helper(frame, frame_index, prev_frame, prev_index, params_i, params_r, write_data_q, reconstructed_path):
     print("Dispatched", frame_index)
+    if prev_index + 1 != frame_index:
+        raise Exception('Frame index mismatch. Current: {}, Previous: {}'.format(frame_index, prev_index))
     mv_dump = []
-    og_y_component = frame[:, :, 0]
     residual_block_dump = []
+    mae_dump = []
     counter = 0
-    for y in range(0, og_y_component.shape[0], params_i):
+    for y in range(0, frame.shape[0], params_i):
         residual_block_dump.append([])
         mv_dump.append([])
-        for x in range(0, og_y_component.shape[1], params_i):
+        for x in range(0, frame.shape[1], params_i):
             top_left = centered_top_left = (y, x)
-            centered_block = og_y_component[top_left[0]:top_left[0] + params_i, top_left[1]:top_left[1] + params_i]
+            centered_block = frame[top_left[0]:top_left[0] + params_i, top_left[1]:top_left[1] + params_i]
             bottom_right = (top_left[0] + params_i, top_left[1] + params_i)
 
             y_offset = top_left[0] - params_r
@@ -148,12 +152,14 @@ def calc_motion_vector_helper(frame, frame_index, prev_frame, params_i, params_r
 
             min_motion_vector, min_mae, min_yx, min_block = calc_motion_vector(centered_block, centered_top_left, search_window, top_left, params_i)
             mv_dump[counter].append((min_motion_vector, min_yx))
+            mae_dump.append(min_mae)
 
             residual_block = centered_block - min_block
             residual_block_rounded = np.array([rounding(x, 2) for x in residual_block.reshape(params_i * params_i)])
             residual_block_dump[counter].append(residual_block_rounded)
         counter += 1
-    residual_frame = pixel_create(np.array(residual_block_dump), og_y_component.shape, params_i)
+    residual_frame = pixel_create(np.array(residual_block_dump), frame.shape, params_i)
+    average_mae = np.array(mae_dump).mean().astype(int)
 
     reconstructed_frame = []
     reconstructed_counter = 0
@@ -168,9 +174,11 @@ def calc_motion_vector_helper(frame, frame_index, prev_frame, params_i, params_r
             reconstructed_block = block_in_prev_frame + residual_block
             reconstructed_frame[reconstructed_counter].append(reconstructed_block)
         reconstructed_counter += 1
-    current_reconstructed_frame = pixel_create(np.array(reconstructed_frame), og_y_component.shape, params_i)
+    current_reconstructed_frame = pixel_create(np.array(reconstructed_frame), frame.shape, params_i)
 
-    reconstructed_q.put((frame_index, current_reconstructed_frame))
+    # reconstructed_q.put((frame_index, current_reconstructed_frame))
+    current_reconstructed_frame = convert_within_range(current_reconstructed_frame)
+    reconstructed_path.joinpath('{}'.format(frame_index)).write_bytes(current_reconstructed_frame)
     
-    write_data_q.put((frame_index, mv_dump, residual_frame, current_reconstructed_frame, og_y_component))
+    write_data_q.put((frame_index, mv_dump, residual_frame, average_mae))
     print('Frame {} done'.format(frame_index))
