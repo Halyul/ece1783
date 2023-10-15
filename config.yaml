@@ -13,5 +13,7 @@ output:
   #   path: pngs
   #   noise: y # r, g, b, y, u, v, one at a time for png only
 params:
-  i: 2
+  i: 2 # 2, 8, 64
+  r: 1 # 1, 4, 8
+  n: 1 # 1, 2, 3
   diff_factor: 10

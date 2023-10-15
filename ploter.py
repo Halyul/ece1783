@@ -10,16 +10,22 @@ CONFIG = Config('config.yaml').config
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('file', type=str, help='File to plot/view')
+    parser.add_argument('file1', type=str, help='File to plot/view')
+    parser.add_argument('file2', type=str, help='File to plot/view')
     parser.add_argument('--v', '--view', dest='view', action='store_true', help='View image')
     parser.add_argument('--h', '--height', dest='height', type=int, default=-1, help='Height of image')
     parser.add_argument('--w', '--width', dest='width', type=int, default=-1,help='Width of image')
     args = parser.parse_args()
 
-    file = pathlib.Path.cwd().joinpath(args.file)
+    file1 = pathlib.Path.cwd().joinpath(args.file1)
+    file2 = pathlib.Path.cwd().joinpath(args.file2)
 
-    if not file.exists():
-        print("File does not exist")
+    if not file1.exists():
+        print("File 1 does not exist")
+        exit(1)
+
+    if not file2.exists():
+        print("File 2 does not exist")
         exit(1)
 
     if args.height <= 0 and args.width <= 0:
@@ -32,19 +38,17 @@ if __name__ == '__main__':
     pad_width, pad_height = get_padding(width, height, params_i)
 
     if args.view:
-        with open(file, 'rb') as f:
+        with open(file1, 'rb') as f:
             file_bytes = f.read()
         
         data = np.frombuffer(file_bytes, dtype=np.uint8).reshape(pad_height, pad_width)
         _, _, _, data = yuv2rgb(data)
     else:
-        averaged_file = file.parent.joinpath('{}.y-only-averaged'.format(file.stem))
-        padded_file = file.parent.joinpath('{}.y-only-padded'.format(file.stem))
         
-        with open(averaged_file, 'rb') as f:
+        with open(file1, 'rb') as f:
             averaged_file_bytes = f.read()
 
-        with open(padded_file, 'rb') as f:
+        with open(file2, 'rb') as f:
             padded_file_bytes = f.read()
 
         averaged_data = np.frombuffer(averaged_file_bytes, dtype=np.uint8).reshape(pad_height, pad_width)

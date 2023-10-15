@@ -1,5 +1,5 @@
 import numpy as np
-from lib.block_processing import block_create, pixel_create
+from lib.block_processing import *
 
 width = 12
 height = 12
@@ -181,80 +181,28 @@ l = [
 # print(np.array_equal(l, pixel_create(h, (height, width), i)))
 
 
-b1 = a[:, :, 0]
-r = 4
-i = 4
+# params_r = 4
+# params_i = 2
+# f1 = a
+# f1_reconstructed = calc_motion_vector_helper(f1, 0, np.full(height*width, 128).reshape(height, width), params_i, params_r, None)
+# print(f1_reconstructed)
+# f2 = np.roll(a, 1, axis=1)
+# print(f2[:,:,0])
+# f2_reconstructed = calc_motion_vector_helper(f2, 1, f1_reconstructed, params_i, params_r, None)
+# print(f2_reconstructed)
 
-# set the top left corner of the current block
-top_left = centered_top_left = (1, 1)
-# set the current block 
-centered_block = b1[top_left[0]:top_left[0] + i, top_left[1]:top_left[1] + i]
-# reshape for mae calculation
-centered_block_reshaped = centered_block.reshape(i*i)
-# set the bottom right corner of the current block
-bottom_right = (top_left[0] + i, top_left[1] + i)
+"""
+array([210, 211, 205, 210])
+array([[196, 172, 194, 212, 208, 212, 204, 176],
+       [190, 188, 188, 204, 208, 212, 208, 176],
+       [154, 200, 200, 200, 204, 212, 208, 176],
+       [104, 164, 200, 198, 202, 212, 208, 172],
+       [104, 120, 176, 200, 200, 208, 204, 172],
+       [116, 104, 124, 180, 204, 208, 204, 172]])
+"""
+def a(i):
+    def b():
+        print(i)
+    b()
 
-# set the top left corner of the search window
-y_offset = top_left[0] - r
-if y_offset >= 0:
-    top_left = (y_offset, top_left[1])
-    bottom_right = (bottom_right[0] + r, bottom_right[1])
-else:
-    top_left = (0, top_left[1])
-    bottom_right = (bottom_right[0] + r, bottom_right[1])
-
-# set the bottom right corner of the search window
-x_offset = top_left[1] - r
-if x_offset >= 0:
-    top_left = (top_left[0], x_offset)
-    bottom_right = (bottom_right[0], bottom_right[1] + r)
-else:
-    top_left = (top_left[0], 0)
-    bottom_right = (bottom_right[0], bottom_right[1] + r)
-
-print(bottom_right)
-# search window
-c2 = b1[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
-print(centered_block)
-# print(c2)
-
-min_mae = -1
-min_motion_vector = None
-min_yx = None
-for y in range(0, c2.shape[0] - i + 1):
-    for x in range(0, c2.shape[1] - i + 1):
-        if centered_top_left[0] == y and centered_top_left[1] == x:
-            continue
-        d1 = c2[y:i + y, x:i + x]
-        # print(d1)
-        d2 = d1.reshape(i*i)
-        mae = np.abs(d2 - centered_block_reshaped).mean().astype(int)
-        motion_vector = (y - centered_top_left[0], x - centered_top_left[1])
-        # print(mae, motion_vector)
-        if min_mae == -1:
-            min_mae = mae
-            min_motion_vector = motion_vector
-            min_yx = (y, x)
-        elif mae < min_mae:
-            min_mae = mae
-            min_motion_vector = motion_vector
-            min_yx = (y, x)
-        elif mae == min_mae:
-            current_min_l1_norm = (abs(min_motion_vector[0]) + abs(min_motion_vector[1]))
-            new_min_l1_norm = (abs(motion_vector[0]) + abs(motion_vector[1]))
-            if new_min_l1_norm < current_min_l1_norm:
-                min_mae = mae
-                min_motion_vector = motion_vector
-                min_yx = (y, x)
-            elif new_min_l1_norm == current_min_l1_norm:
-                if y < min_yx[0]:
-                    min_mae = mae
-                    min_motion_vector = motion_vector
-                    min_yx = (y, x)
-                elif y == min_yx[0]:
-                    if x < min_yx[1]:
-                        min_mae = mae
-                        min_motion_vector = motion_vector
-                        min_yx = (y, x)
-
-print(min_mae, min_motion_vector, min_yx, b1[min_yx[0]:min_yx[0] + i, min_yx[1]:min_yx[1] + i])
+a(123)

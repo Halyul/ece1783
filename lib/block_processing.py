@@ -1,5 +1,6 @@
 import numpy as np
-from lib.utils.misc import get_padding
+import pathlib
+from lib.utils.misc import get_padding, rounding
 
 """
     Transform the pixel-based frame into an i x i sized block-based frame.
@@ -63,3 +64,113 @@ def pixel_create(np_array: np.ndarray, shape: tuple, params_i: int) -> np.ndarra
     if not shape == np_pixel_array.shape:
         raise Exception('Shape mismatch.')
     return np_pixel_array
+
+
+def calc_motion_vector(block, block_coor, search_window, search_window_coor, params_i):
+    min_mae = -1
+    min_motion_vector = None
+    min_yx = None
+    block_reshaped = block.reshape(params_i * params_i)
+    min_block = None
+    for y in range(0, search_window.shape[0] - params_i + 1):
+        actual_y = y + search_window_coor[0]
+        for x in range(0, search_window.shape[1] - params_i + 1):
+            actual_x = x + search_window_coor[1]
+            a = search_window[y:params_i + y, x:params_i + x]
+            b = a.reshape(params_i * params_i)
+            mae = np.abs(b - block_reshaped).mean().astype(int)
+            motion_vector = (actual_y - block_coor[0], actual_x - block_coor[1])
+            if min_mae == -1:
+                min_mae = mae
+                min_motion_vector = motion_vector
+                min_yx = (actual_y, actual_x)
+                min_block = a
+            elif mae < min_mae:
+                min_mae = mae
+                min_motion_vector = motion_vector
+                min_yx = (actual_y, actual_x)
+                min_block = a
+            elif mae == min_mae:
+                current_min_l1_norm = (abs(min_motion_vector[0]) + abs(min_motion_vector[1]))
+                new_min_l1_norm = (abs(motion_vector[0]) + abs(motion_vector[1]))
+                if new_min_l1_norm < current_min_l1_norm:
+                    min_mae = mae
+                    min_motion_vector = motion_vector
+                    min_yx = (actual_y, actual_x)
+                    min_block = a
+                elif new_min_l1_norm == current_min_l1_norm:
+                    if actual_y < min_yx[0]:
+                        min_mae = mae
+                        min_motion_vector = motion_vector
+                        min_yx = (actual_y, actual_x)
+                        min_block = a
+                    elif actual_y == min_yx[0]:
+                        if actual_x < min_yx[1]:
+                            min_mae = mae
+                            min_motion_vector = motion_vector
+                            min_yx = (actual_y, actual_x)
+                            min_block = a
+
+    return min_motion_vector, min_mae, min_yx, min_block
+
+def calc_motion_vector_helper(frame, frame_index, prev_frame, params_i, params_r, reconstructed_q, write_data_q):
+    print("Dispatched", frame_index)
+    mv_dump = []
+    og_y_component = frame[:, :, 0]
+    residual_block_dump = []
+    counter = 0
+    for y in range(0, og_y_component.shape[0], params_i):
+        residual_block_dump.append([])
+        mv_dump.append([])
+        for x in range(0, og_y_component.shape[1], params_i):
+            top_left = centered_top_left = (y, x)
+            centered_block = og_y_component[top_left[0]:top_left[0] + params_i, top_left[1]:top_left[1] + params_i]
+            bottom_right = (top_left[0] + params_i, top_left[1] + params_i)
+
+            y_offset = top_left[0] - params_r
+            if y_offset >= 0:
+                top_left = (y_offset, top_left[1])
+                bottom_right = (bottom_right[0] + params_r, bottom_right[1])
+            else:
+                top_left = (0, top_left[1])
+                bottom_right = (bottom_right[0] + params_r, bottom_right[1])
+
+            # set the bottom right corner of the search window
+            x_offset = top_left[1] - params_r
+            if x_offset >= 0:
+                top_left = (top_left[0], x_offset)
+                bottom_right = (bottom_right[0], bottom_right[1] + params_r)
+            else:
+                top_left = (top_left[0], 0)
+                bottom_right = (bottom_right[0], bottom_right[1] + params_r)
+            
+            search_window = prev_frame[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
+
+            min_motion_vector, min_mae, min_yx, min_block = calc_motion_vector(centered_block, centered_top_left, search_window, top_left, params_i)
+            mv_dump[counter].append((min_motion_vector, min_yx))
+
+            residual_block = centered_block - min_block
+            residual_block_rounded = np.array([rounding(x, 2) for x in residual_block.reshape(params_i * params_i)])
+            residual_block_dump[counter].append(residual_block_rounded)
+        counter += 1
+    residual_frame = pixel_create(np.array(residual_block_dump), og_y_component.shape, params_i)
+
+    reconstructed_frame = []
+    reconstructed_counter = 0
+    for mv_row in mv_dump:
+        reconstructed_frame.append([])
+        for mv in mv_row:
+            motion_vector = mv[0]
+            yx = mv[1]
+            block_coor = (yx[0] - motion_vector[0], yx[1] - motion_vector[1])
+            block_in_prev_frame = prev_frame[yx[0]:yx[0] + params_i, yx[1]:yx[1] + params_i]
+            residual_block = residual_frame[block_coor[0]:block_coor[0] + params_i, block_coor[1]:block_coor[1] + params_i]
+            reconstructed_block = block_in_prev_frame + residual_block
+            reconstructed_frame[reconstructed_counter].append(reconstructed_block)
+        reconstructed_counter += 1
+    current_reconstructed_frame = pixel_create(np.array(reconstructed_frame), og_y_component.shape, params_i)
+
+    reconstructed_q.put((frame_index, current_reconstructed_frame))
+    
+    write_data_q.put((frame_index, mv_dump, residual_frame, current_reconstructed_frame, og_y_component))
+    print('Frame {} done'.format(frame_index))

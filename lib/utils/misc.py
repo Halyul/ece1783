@@ -40,3 +40,5 @@ def yuv2rgb(y: np.ndarray, u: np.ndarray = None, v: np.ndarray = None) -> np.nda
     b = np.clip(b, 0, 255).astype(np.uint8)
     return (r, g, b, np.stack((r, g, b), axis=-1))
     
+def rounding(x, base):
+    return base * round(x / base)

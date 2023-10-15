@@ -4,3 +4,4 @@ outputs/*
 .DS_Store
 y_only/*
 *__pycache__*
+output/* 

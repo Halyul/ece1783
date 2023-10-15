@@ -6,8 +6,8 @@ from lib.utils.config import Config
 from lib.utils.enums import YUVFormat, Identifier
 
 from lib.output import to_y_only_files, to_video, to_pngs
-from lib.blueprints.multi_processing import MultiProcessing
 from lib.frame_processing import upscale
+from lib.multi_processing import MultiProcessingNew as MP
 
 class YUVProcessor:
 
@@ -183,15 +183,15 @@ class YUVProcessor:
         Read the frames of the YUV file, and then upscale to YUV444.
     """
     def __read_frames(self) -> None:
-        if self.__func == 'y_only':
-            callback = to_y_only_files
-            callback_args = (self.config['params']['i'], self.config['params']['diff_factor'],)
-        elif self.__func == 'pngs':
-            callback = to_pngs
-            callback_args = (self.config['output']['args']['noise'] if 'noise' in self.config['output']['args'] else None,)
-        elif self.__func == 'video':
-            callback = to_video
-            callback_args = (self.upscale,)
+        # if self.__func == 'y_only':
+        #     callback = to_y_only_files
+        #     callback_args = (self.config['params']['i'], self.config['params']['diff_factor'],)
+        # elif self.__func == 'pngs':
+        #     callback = to_pngs
+        #     callback_args = (self.config['output']['args']['noise'] if 'noise' in self.config['output']['args'] else None,)
+        # elif self.__func == 'video':
+        #     callback = to_video
+        #     callback_args = (self.upscale,)
         self.__read_byte() # skil END_IDENTIFIER, after this line, self.__byte == b'F'
         while self.__byte != Identifier.END.value:
             # skip first "FRAME"
@@ -218,13 +218,13 @@ class YUVProcessor:
                 upscale, 
                 (
                     (self.info['width'], self.__frame_index, self.__offsets, yuv_components, self.__format),
-                    callback,
-                    callback_args
+                    self.__mp.og_frame_q,
                 )
             )
             print(self.__frame_index)
             self.__frame_index += 1
-        
+            # break
+
         return
     
     """
@@ -283,98 +283,4 @@ class YUVProcessor:
     """
     def append_to_header_info(self, key: str, value: str):
         self.info[key] += value
-        return
-
-class MP(MultiProcessing):
-
-    """
-        See set_path@MultiProcessing
-    """
-    def set_path(self):
-        self.path = self.config_class.get_output_path()
-        self.func = self.config_class.get_output_func()
-
-    """
-        See clear@MultiProcessing
-    """
-    def clear(self):
-        if self.func == 'y_only':
-            if self.path.exists():
-                shutil.rmtree(self.path)
-            pathlib.Path.cwd().joinpath(self.path).mkdir(parents=True, exist_ok=True)
-        elif self.func == 'pngs':
-            if self.path.exists():
-                shutil.rmtree(self.path)
-            pathlib.Path.cwd().joinpath(self.path).mkdir(parents=True, exist_ok=True)
-        elif self.func == 'video':
-            pathlib.Path.cwd().joinpath(self.path.parent).mkdir(parents=True, exist_ok=True)
-            if self.path.exists():
-                self.path.unlink()
-                self.path.write_bytes(b'')
-    
-    """
-        See write@MultiProcessing
-    """
-    @staticmethod
-    def write(func, path, q) -> None:
-        if func == 'y_only':
-            while True:
-                data = q.get()
-                if data == 'kill':
-                    break
-                (y, frame_index) = data
-                path.joinpath('{}'.format(frame_index)).write_bytes(y)
-                print('done write ', frame_index)
-        elif func == 'pngs':
-            while True:
-                data = q.get()
-                if data == 'kill':
-                    break
-                (rgb, frame_index) = data
-                img = Image.fromarray(rgb)
-                img.save(path.joinpath('{}.png'.format(frame_index)))
-                print('done write png', frame_index)
-        elif func == 'video':
-            next_expected_frame = 0
-            pending_frames = {}
-            with path.open("wb") as f:
-                while True:
-                    data = q.get()
-                    if data == 'kill':
-                        break
-                    frame_index, frame = data
-                    if frame_index == -1:
-                        f.write(frame)
-                        f.flush()
-                        continue
-                    if frame_index == next_expected_frame:
-                        f.write(frame)
-                        f.flush()
-                        next_expected_frame += 1
-                        while next_expected_frame in pending_frames:
-                            f.write(pending_frames.pop(next_expected_frame))
-                            print('done write pending frame', next_expected_frame)
-                            f.flush()
-                            next_expected_frame += 1
-                    else:
-                        pending_frames[frame_index] = frame
-                        print('added to pending frames', frame_index)
-    
-    """
-        See done@MultiProcessing
-    """
-    def done(self):
-        for job in self.jobs: 
-            job.get()
-        
-        self.q.put('kill')
-        self.pool.close()
-        self.pool.join()
-
-    """
-        See append@MultiProcessing
-    """
-    def append(self, data: bytearray):
-        if self.path is not None:
-            self.q.put((-1, data))
         return

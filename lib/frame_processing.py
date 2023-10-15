@@ -8,11 +8,9 @@ from typing import Callable as function
 
     Parameters:
         data (tuple): The data to upscale.
-        callback (function): The callback function.
-        callback_args (tuple): The callback function arguments.
         q (Queue): The queue to write to.
 """
-def upscale(data: tuple, callback: function, callback_args: tuple, q: Queue):
+def upscale(data: tuple, q: Queue):
     (width, frame_index, format_tuple, yuv_components, mode) = data
 
     pixel_list = []
@@ -38,4 +36,4 @@ def upscale(data: tuple, callback: function, callback_args: tuple, q: Queue):
             pixel_list.append([])
         pixel_list[current_row].append([y_component, u_component, v_component])
 
-    callback((np.array(pixel_list), frame_index), callback_args, q)
+    q.put((np.array(pixel_list), frame_index))
