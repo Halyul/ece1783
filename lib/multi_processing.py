@@ -85,7 +85,7 @@ def block_processing_dispatcher(signal_q, write_data_q, config_class):
     params_r = config_class.config['params']['r']
     counter = 0
     run_flag = True
-    done_file = pathlib.Path.cwd().joinpath(config_class.get_output_path('main_folder'), config_class.get_output_path('done_file'))
+    meta_file = pathlib.Path.cwd().joinpath(config_class.get_output_path('main_folder'), config_class.get_output_path('meta_file'))
     height, width = signal_q.get()
     while run_flag:
         file = pathlib.Path.cwd().joinpath(config_class.get_output_path('main_folder'), config_class.get_output_path('original_folder'), str(counter))
@@ -113,8 +113,8 @@ def block_processing_dispatcher(signal_q, write_data_q, config_class):
             prev_frame = np.array(prev_frame_uint8, dtype=np.int16)
         calc_motion_vector_helper(frame, frame_index, prev_frame, prev_index, params_i, params_r, write_data_q, reconstructed_path)
         counter += 1
-        if done_file.exists():
-            l = done_file.read_text().split(',')
+        if meta_file.exists():
+            l = meta_file.read_text().split(',')
             last = int(l[0])
             if counter == last:
                 run_flag = False
@@ -125,7 +125,14 @@ def write_data_dispatcher(q, config_class):
         if data == 'kill':
             break
         frame_index, mv_dump, residual_frame, average_mae = data
-        pathlib.Path.cwd().joinpath(config_class.get_output_path('main_folder'), config_class.get_output_path('mv_folder'), '{}'.format(frame_index)).write_text(str(mv_dump))
+
+        mv_dump_text = ''
+        for i in range(len(mv_dump)):
+            for j in range(len(mv_dump[i])):
+                min_motion_vector, min_yx = mv_dump[i][j]
+                mv_dump_text += '{} {} {} {}\n'.format(min_motion_vector[0], min_motion_vector[1], min_yx[0], min_yx[1])
+
+        pathlib.Path.cwd().joinpath(config_class.get_output_path('main_folder'), config_class.get_output_path('mv_folder'), '{}'.format(frame_index)).write_text(str(mv_dump_text))
 
         residual_frame = np.array(residual_frame, dtype=np.int16)
         pathlib.Path.cwd().joinpath(config_class.get_output_path('main_folder'), config_class.get_output_path('residual_folder'), '{}'.format(frame_index)).write_bytes(residual_frame)

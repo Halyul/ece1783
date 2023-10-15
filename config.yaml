@@ -7,14 +7,21 @@ output_path:
   reconstructed_folder: reconstructed
   residual_folder: residual
   mv_folder: mv
-  done_file: done
+  meta_file: meta
   mae_file: mae.txt
   uv_folder: uv
 params:
   i: 2 # 2, 8, 64
   r: 1 # 1, 4, 8
   n: 1 # 1, 2, 3
-  diff_factor: 10
 
 statistics:
   path: data
+
+decoder:
+  input_path:
+    mv_folder: output/mv
+    residual_folder: output/residual
+    meta_file: output/meta
+  output_path:
+    main_folder: decoder_output

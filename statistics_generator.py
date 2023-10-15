@@ -34,10 +34,10 @@ data_path = pathlib.Path.cwd().joinpath(config['output_path']['main_folder'])
 mv_path = data_path.joinpath(config['output_path']['mv_folder'])
 original_path = data_path.joinpath(config['output_path']['original_folder'])
 reconstructed_path = data_path.joinpath(config['output_path']['reconstructed_folder'])
-done_file = data_path.joinpath(config['output_path']['done_file'])
+meta_file = data_path.joinpath(config['output_path']['meta_file'])
 mae_file = data_path.joinpath(config['output_path']['mae_file'])
 
-l = done_file.read_text().split(',')
+l = meta_file.read_text().split(',')
 total_frames = int(l[0])
 height, width = int(l[1]), int(l[2])
 

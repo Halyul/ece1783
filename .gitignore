@@ -6,3 +6,4 @@ y_only/*
 *__pycache__*
 output/* 
 data/*
+decoder_output/*
