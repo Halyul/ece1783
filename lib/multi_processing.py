@@ -99,6 +99,7 @@ def block_processing_dispatcher(signal_q: mp.Queue, write_data_q: mp.Queue, conf
 
     params_i = config_class.config['params']['i']
     params_r = config_class.config['params']['r']
+    params_n = config_class.config['params']['n']
     counter = 0
     run_flag = True
     meta_file = pathlib.Path.cwd().joinpath(config_class.get_output_path('main_folder'), config_class.get_output_path('meta_file'))
@@ -127,7 +128,7 @@ def block_processing_dispatcher(signal_q: mp.Queue, write_data_q: mp.Queue, conf
             prev_file_bytes = prev_file.read_bytes()
             prev_frame_uint8 = np.frombuffer(prev_file_bytes, dtype=np.uint8).reshape(height, width)
             prev_frame = np.array(prev_frame_uint8, dtype=np.int16)
-        calc_motion_vector_parallel_helper(frame, frame_index, prev_frame, prev_index, params_i, params_r, write_data_q, reconstructed_path, pool)
+        calc_motion_vector_parallel_helper(frame, frame_index, prev_frame, prev_index, params_i, params_r, params_n, write_data_q, reconstructed_path, pool)
         counter += 1
         if meta_file.exists():
             l = meta_file.read_text().split(',')

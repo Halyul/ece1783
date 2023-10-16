@@ -73,10 +73,11 @@ def calc_motion_vector(block: np.ndarray, block_coor: tuple, search_window: np.n
         frame (np.ndarray): The current frame.
         params_i (int): The block size.
         params_r (int): The search window size.
+        params_n (int): The base of 2 ^ n.
         prev_frame (np.ndarray): The previous frame.
         y (int): The y coordinate of the block.
 """
-def parallel_helper(index: int, frame: np.ndarray, params_i: int, params_r: int, prev_frame: np.ndarray, y: int) -> tuple:
+def parallel_helper(index: int, frame: np.ndarray, params_i: int, params_r: int, params_n: int, prev_frame: np.ndarray, y: int) -> tuple:
     residual_block_dump = []
     mv_dump = []
     mae_dump = []
@@ -109,7 +110,7 @@ def parallel_helper(index: int, frame: np.ndarray, params_i: int, params_r: int,
         mae_dump.append(min_mae)
 
         residual_block = centered_block - min_block
-        residual_block_rounded = np.array([rounding(x, 2) for x in residual_block.reshape(params_i * params_i)])
+        residual_block_rounded = np.array([rounding(x, 2 ** params_n) for x in residual_block.reshape(params_i * params_i)])
         residual_block_dump.append(residual_block_rounded)
     return (index, residual_block_dump, mv_dump, mae_dump)
 
@@ -123,11 +124,12 @@ def parallel_helper(index: int, frame: np.ndarray, params_i: int, params_r: int,
         prev_index (int): The previous frame index.
         params_i (int): The block size.
         params_r (int): The search window size.
+        params_n (int): The base of 2 ^ n.
         write_data_q (Queue): The queue to write data to.
         reconstructed_path (Path): The path to write the reconstructed frame to.
         pool (Pool): The pool of processes.
 """
-def calc_motion_vector_parallel_helper(frame: np.ndarray, frame_index: int, prev_frame: np.ndarray, prev_index: int, params_i: int, params_r: int, write_data_q: Queue, reconstructed_path: Path, pool: Pool) -> None:
+def calc_motion_vector_parallel_helper(frame: np.ndarray, frame_index: int, prev_frame: np.ndarray, prev_index: int, params_i: int, params_r: int, params_n: int, write_data_q: Queue, reconstructed_path: Path, pool: Pool) -> None:
     print("Dispatched", frame_index)
     if prev_index + 1 != frame_index:
         raise Exception('Frame index mismatch. Current: {}, Previous: {}'.format(frame_index, prev_index))
@@ -141,6 +143,7 @@ def calc_motion_vector_parallel_helper(frame: np.ndarray, frame_index: int, prev
             frame, 
             params_i, 
             params_r, 
+            params_n,
             prev_frame,
             y,
         ))
