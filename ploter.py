@@ -4,7 +4,7 @@ import argparse
 import pathlib
 import numpy as np
 from lib.utils.config import Config
-from lib.utils.misc import get_padding, yuv2rgb
+from lib.utils.misc import get_padding, yuv2rgb, block_create, residual_coefficients_to_residual_frame
 
 CONFIG = Config('config.yaml').config
 
@@ -44,7 +44,9 @@ if __name__ == '__main__':
             file_bytes = f.read()
         
         if args.residual:
-            data = np.frombuffer(file_bytes, dtype=np.int16).reshape(pad_height, pad_width)
+            residual_np_array = np.frombuffer(file_bytes, dtype=np.int16).reshape(pad_height, pad_width)
+            residual_frame_coefficients, _, _, _ = block_create(residual_np_array, params_i)
+            data = residual_coefficients_to_residual_frame(residual_frame_coefficients, params_i, residual_np_array.shape)
             data = np.abs(data) * args.diff_factor
         else:
             data = np.frombuffer(file_bytes, dtype=np.uint8).reshape(pad_height, pad_width)

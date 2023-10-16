@@ -1,5 +1,6 @@
 import math
 import numpy as np
+from scipy.fftpack import dct, idct
 
 """
     Get the padding of the frame.
@@ -45,7 +46,7 @@ def yuv2rgb(y: np.ndarray, u: np.ndarray = None, v: np.ndarray = None) -> np.nda
     Y component only.
 
     Parameters:
-        np_array (np.ndarray): The block-based frame.
+        np_array (np.ndarray): The block-based frame. The format should match the output @ block_create
         shape (height, width) (tuple): The shape of the pixel-based frame.
         params_i (int): The block size.
     
@@ -55,10 +56,9 @@ def yuv2rgb(y: np.ndarray, u: np.ndarray = None, v: np.ndarray = None) -> np.nda
 def pixel_create(np_array: np.ndarray, shape: tuple, params_i: int) -> np.ndarray:
     offset = shape[1] // params_i
 
-    d = np_array.reshape(-1, offset, params_i, params_i)
     e = []
     for i in range(offset):
-        e.append(d[:, i].reshape(-1, params_i))
+        e.append(np_array[:, i].reshape(-1, params_i))
     
     np_pixel_array = np.block(e)
     if not shape == np_pixel_array.shape:
@@ -100,7 +100,7 @@ def block_create(np_array: np.ndarray, params_i: int) -> tuple:
     # combine into 1 array
     # group into i x i, with <x> channels
     # each row has width // i blocks
-    np_block_array = np.block(b).reshape(-1, offset, block_size) # (-1,  width // i, i**2)
+    np_block_array = np.block(b).reshape(-1, offset, params_i, params_i) # (-1,  width // i, i**2)
     return (np_block_array, offset, block_size, np_array_padded)
 
 """
@@ -153,3 +153,74 @@ def construct_predicted_frame(mv_dump: list, prev_frame: np.ndarray, params_i: i
         y_counter += params_i
         x_counter = 0
     return pixel_create(np.array(predicted_frame_dump), prev_frame.shape, params_i)
+
+"""
+    2D DCT.
+
+    Parameters:
+        np_array (np.array): The numpy array.
+    
+    Returns:
+        (np.array): The DCT-ed numpy array.
+"""
+def dct2(np_array: np.array) -> np.array:
+    return dct(dct(np_array.T, norm='ortho').T, norm='ortho')
+
+"""
+    2D IDCT.
+
+    Parameters:
+        np_array (np.array): The numpy array.
+    
+    Returns:
+        (np.array): The IDCT-ed numpy array.
+"""
+def idct2(np_array: np.array) -> np.array:
+    return idct(idct(np_array.T, norm='ortho').T, norm='ortho')
+
+"""
+    Transform the residual frame into residual coefficients.
+
+    Parameters:
+        residual_frame (np.ndarray): The residual frame. The format should match the output @ block_create
+        params_i (int): The block size.
+
+    Returns:
+        (np.ndarray): The residual coefficients. The format matches the output @ block_create
+"""
+def frame_dct2(np_array, params_i):
+    new_np_array = np_array.reshape(-1, params_i, params_i)
+    a = []
+    for item in new_np_array:
+        a.append(dct2(item).astype(int))
+    return np.array(a).reshape(-1, np_array.shape[1], params_i, params_i)
+
+"""
+    Transform residual coefficients into the residual frame.
+
+    Parameters:
+        residual_coefficients (np.ndarray): The residual coefficients. The format should match the output @ block_create
+        params_i (int): The block size.
+    
+    Returns:
+        (np.ndarray): The residual frame. The format matches the output @ block_create
+"""
+def frame_idct2(np_array: np.ndarray, params_i: int) -> np.ndarray:
+    new_np_array = np_array.reshape(-1, params_i, params_i)
+    a = []
+    for item in new_np_array:
+        a.append(idct2(item).astype(int))
+    return np.array(a).reshape(-1, np_array.shape[1], params_i, params_i)
+
+"""
+    Transform the residual frame into residual coefficients.
+
+    Parameters:
+        residual_frame (np.ndarray): The residual frame. The format should match the output @ block_create
+        params_i (int): The block size.
+    
+    Returns:
+        (np.ndarray): The residual coefficients.
+"""
+def residual_coefficients_to_residual_frame(residual_coefficients: np.ndarray, params_i: int, shape: tuple) -> np.ndarray:
+    return pixel_create(frame_idct2(residual_coefficients, params_i), shape, params_i)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from lib.utils.config import Config
 from lib.signal_processing import psnr, ssim
-from lib.utils.misc import convert_within_range, construct_predicted_frame
+from lib.utils.misc import convert_within_range, construct_predicted_frame, block_create, residual_coefficients_to_residual_frame
 import matplotlib.pyplot as plt
 import pathlib
 from PIL import Image
@@ -94,15 +94,18 @@ def frame_parallel_helper(original_path: pathlib.Path, reconstructed_path: pathl
         height (int): height of frame
         width (int): width of frame
         residual_pngs_path (Path): path to save pngs
+        params_i (int): block size parameter
 """
-def residual_parallel_helper(original_path: pathlib.Path, residual_path: pathlib.Path, i: int, height: int, width: int, residual_pngs_path: pathlib.Path) -> None:
+def residual_parallel_helper(original_path: pathlib.Path, residual_path: pathlib.Path, i: int, height: int, width: int, residual_pngs_path: pathlib.Path, params_i: int) -> None:
     current_file = original_path.joinpath(str(i)).read_bytes()
     prev_file = original_path.joinpath(str(i - 1)).read_bytes()
     generated_residual_file = residual_path.joinpath(str(i)).read_bytes()
 
     current_frame = np.frombuffer(current_file, dtype=np.uint8).reshape(height, width).astype(np.int16)
     prev_frame = np.frombuffer(prev_file, dtype=np.uint8).reshape(height, width).astype(np.int16)
-    generated_residual_frame = np.frombuffer(generated_residual_file, dtype=np.int16).reshape(height, width)
+    generated_residual_frame_np_array = np.frombuffer(generated_residual_file, dtype=np.int16).reshape(height, width)
+    residual_frame_coefficients, _, _, _ = block_create(generated_residual_frame_np_array, params_i)
+    generated_residual_frame = residual_coefficients_to_residual_frame(residual_frame_coefficients, params_i, (height, width)).astype(np.int16)
 
     residual_frame = current_frame - prev_frame
     residual_frame = np.abs(residual_frame)
@@ -220,6 +223,7 @@ if __name__ == '__main__':
             height,
             width,
             residual_pngs_path,
+            params_i,
         ))
         residual_jobs.append(job)
 

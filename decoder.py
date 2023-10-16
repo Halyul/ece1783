@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from lib.utils.config import Config
-from lib.utils.misc import convert_within_range, construct_predicted_frame
+from lib.utils.misc import convert_within_range, construct_predicted_frame, residual_coefficients_to_residual_frame, block_create
 import pathlib
 import numpy as np
 
@@ -31,7 +31,8 @@ for i in range(total_frames):
         prev_frame = np.array(prev_frame_uint8, dtype=np.int16)
     residual_file = residual_path.joinpath('{}'.format(i))
     residual_file_bytes = residual_file.read_bytes()
-    residual_frame = np.frombuffer(residual_file_bytes, dtype=np.int16).reshape(height, width)
+    residual_frame_coefficients, _, _, _ = block_create(np.frombuffer(residual_file_bytes, dtype=np.int16).reshape(height, width), params_i)
+    residual_frame = residual_coefficients_to_residual_frame(residual_frame_coefficients, params_i, (height, width))
     
     mv_file = mv_path.joinpath('{}'.format(i))
     mv_file_lines = mv_file.read_text().split('\n')

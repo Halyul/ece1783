@@ -5,12 +5,21 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: Runner",
+            "name": "Python: Encoder",
             "type": "python",
             "request": "launch",
-            "program": "runner.py",
+            "program": "encoder.py",
             "console": "integratedTerminal",
             "justMyCode": true
+        },
+        {
+          "name": "Python: Plotet Residual",
+          "type": "python",
+          "request": "launch",
+          "program": "ploter.py",
+          "console": "integratedTerminal",
+          "justMyCode": true,
+          "args": ["output/residual/0", "--h", "288", "--v", "--r"]
         }
     ]
 }

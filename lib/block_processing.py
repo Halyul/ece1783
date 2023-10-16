@@ -1,7 +1,7 @@
 import numpy as np
 from multiprocessing import Pool, Queue
 from pathlib import Path
-from lib.utils.misc import rounding, convert_within_range, pixel_create, construct_predicted_frame
+from lib.utils.misc import convert_within_range, construct_predicted_frame, dct2, residual_coefficients_to_residual_frame, pixel_create
 
 """
     Calculate the motion vector for a block from the search window.
@@ -110,8 +110,8 @@ def parallel_helper(index: int, frame: np.ndarray, params_i: int, params_r: int,
         mae_dump.append(min_mae)
 
         residual_block = centered_block - min_block
-        residual_block_rounded = np.array([rounding(x, 2 ** params_n) for x in residual_block.reshape(params_i * params_i)])
-        residual_block_dump.append(residual_block_rounded)
+        residual_block_transformed = dct2(residual_block).astype(int)
+        residual_block_dump.append(residual_block_transformed)
     return (index, residual_block_dump, mv_dump, mae_dump)
 
 """
@@ -162,8 +162,9 @@ def calc_motion_vector_parallel_helper(frame: np.ndarray, frame_index: int, prev
         mv_dump[index] = result[2]
         mae_dump[index] = result[3]
     
+    residual_block_dump = np.array(residual_block_dump)
     predicted_frame = construct_predicted_frame(mv_dump, prev_frame, params_i)
-    residual_frame = pixel_create(np.array(residual_block_dump), frame.shape, params_i)
+    residual_frame = residual_coefficients_to_residual_frame(residual_block_dump, params_i, frame.shape)
     average_mae = np.array(mae_dump).mean().astype(int)
 
     current_reconstructed_frame = predicted_frame + residual_frame
@@ -171,5 +172,5 @@ def calc_motion_vector_parallel_helper(frame: np.ndarray, frame_index: int, prev
     
     reconstructed_path.joinpath('{}'.format(frame_index)).write_bytes(current_reconstructed_frame)
     
-    write_data_q.put((frame_index, mv_dump, residual_frame, average_mae))
+    write_data_q.put((frame_index, mv_dump, pixel_create(residual_block_dump, frame.shape, params_i), average_mae))
     print('Frame {} done'.format(frame_index))
