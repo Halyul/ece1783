@@ -132,8 +132,8 @@ def write_data_dispatcher(q, config_class):
         mv_dump_text = ''
         for i in range(len(mv_dump)):
             for j in range(len(mv_dump[i])):
-                min_motion_vector, min_yx = mv_dump[i][j]
-                mv_dump_text += '{} {} {} {}\n'.format(min_motion_vector[0], min_motion_vector[1], min_yx[0], min_yx[1])
+                min_yx = mv_dump[i][j]
+                mv_dump_text += '{} {}\n'.format(min_yx[0], min_yx[1])
 
         pathlib.Path.cwd().joinpath(config_class.get_output_path('main_folder'), config_class.get_output_path('mv_folder'), '{}'.format(frame_index)).write_text(str(mv_dump_text))
 

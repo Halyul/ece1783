@@ -47,7 +47,7 @@ def calc_motion_vector(block, block_coor, search_window, search_window_coor, par
                             min_yx = (actual_y, actual_x)
                             min_block = a
 
-    return min_motion_vector, min_mae, min_yx, min_block
+    return min_mae, min_yx, min_block
 
 def calc_motion_vector_helper(frame, frame_index, prev_frame, prev_index, params_i, params_r, write_data_q, reconstructed_path):
     print("Dispatched", frame_index)
@@ -131,8 +131,8 @@ def parallel_helper(index, frame, params_i, params_r, prev_frame, y):
         
         search_window = prev_frame[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
 
-        min_motion_vector, min_mae, min_yx, min_block = calc_motion_vector(centered_block, centered_top_left, search_window, top_left, params_i)
-        mv_dump.append((min_motion_vector, min_yx))
+        min_mae, min_yx, min_block = calc_motion_vector(centered_block, centered_top_left, search_window, top_left, params_i)
+        mv_dump.append(min_yx)
         mae_dump.append(min_mae)
 
         residual_block = centered_block - min_block

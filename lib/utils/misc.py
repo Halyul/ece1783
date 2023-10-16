@@ -112,16 +112,22 @@ def convert_within_range(np_array, dtype=np.uint8):
 def reconstruct_frame(mv_dump, prev_frame, residual_frame, params_i, height, width):
     reconstructed_frame = []
     reconstructed_counter = 0
+    y_counter = 0
+    x_counter = 0
     for mv_row in mv_dump:
         reconstructed_frame.append([])
         for mv in mv_row:
-            motion_vector = mv[0]
-            yx = mv[1]
-            block_coor = (yx[0] - motion_vector[0], yx[1] - motion_vector[1])
+            yx = mv
+            block_coor = (y_counter, x_counter)
             block_in_prev_frame = prev_frame[yx[0]:yx[0] + params_i, yx[1]:yx[1] + params_i]
             residual_block = residual_frame[block_coor[0]:block_coor[0] + params_i, block_coor[1]:block_coor[1] + params_i]
+            if residual_block.shape != block_in_prev_frame.shape:
+                raise Exception('Shape mismatch. Current frame: {}, Previous frame: {}, Residual block: {}. YX: {}'.format(residual_frame.shape, prev_frame.shape, residual_block.shape, yx))
             reconstructed_block = block_in_prev_frame + residual_block
             reconstructed_frame[reconstructed_counter].append(reconstructed_block)
+            x_counter += params_i
         reconstructed_counter += 1
+        y_counter += params_i
+        x_counter = 0
     current_reconstructed_frame = pixel_create(np.array(reconstructed_frame), (height, width), params_i)
     return current_reconstructed_frame

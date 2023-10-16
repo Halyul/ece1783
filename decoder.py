@@ -39,11 +39,11 @@ for i in range(total_frames):
     for line in mv_file_lines:
         if line == '':
             continue
-        min_motion_vector_y, min_motion_vector_x, min_yx_y, min_yx_x = line.split(' ')
-        min_motion_vector, min_yx = (int(min_motion_vector_y), int(min_motion_vector_x)), (int(min_yx_y), int(min_yx_x))
+        min_yx_y, min_yx_x = line.split(' ')
+        min_yx = (int(min_yx_y), int(min_yx_x))
         if mv_counter == 0:
             mv_dump.append([])
-        mv_dump[-1].append((min_motion_vector, min_yx))
+        mv_dump[-1].append(min_yx)
         mv_counter += 1
         if mv_counter == width // params_i:
             mv_counter = 0
