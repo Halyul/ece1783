@@ -1,13 +1,12 @@
 debug: false
 input: videos/foreman_cif.y4m
-upscale: 444 # used in output_video
+upscale: 444
 output_path:
   main_folder: output
   original_folder: original
   reconstructed_folder: reconstructed
   residual_folder: residual
   mv_folder: mv
-  predicted_folder: predicted
   meta_file: meta
   mae_file: mae.txt
   uv_folder: uv

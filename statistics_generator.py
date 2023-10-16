@@ -1,5 +1,6 @@
 from lib.utils.config import Config
 from lib.signal_processing import psnr, ssim
+from lib.utils.misc import convert_within_range, construct_predicted_frame
 import matplotlib.pyplot as plt
 import pathlib
 from PIL import Image
@@ -75,6 +76,40 @@ def residual_parallel_helper(original_path, residual_path, i, height, width, res
     draw.text((width // 4 * 5, new_height - 15), 'Abs Diff w/ Motion Compensation', fill=0)
     combined.save(residual_pngs_path.joinpath('{}.png'.format(i)))
 
+def predicted_frame_parallel_helper(total_frames, mv_path, reconstructed_path, params_i, output_path, height, width):
+    for i in range(total_frames):
+        prev_index = i - 1
+        if prev_index == -1:
+            prev_frame = np.full(height*width, 128).reshape(height, width)
+        else:
+            prev_file = reconstructed_path.joinpath('{}'.format(prev_index))
+            prev_file_bytes = prev_file.read_bytes()
+            prev_frame_uint8 = np.frombuffer(prev_file_bytes, dtype=np.uint8).reshape(height, width)
+            prev_frame = np.array(prev_frame_uint8, dtype=np.int16)
+        
+        mv_file = mv_path.joinpath('{}'.format(i))
+        mv_file_lines = mv_file.read_text().split('\n')
+        mv_dump = []
+        mv_counter = 0
+        for line in mv_file_lines:
+            if line == '':
+                continue
+            min_motion_vector_y, min_motion_vector_x = line.split(' ')
+            min_motion_vector = (int(min_motion_vector_y), int(min_motion_vector_x))
+            if mv_counter == 0:
+                mv_dump.append([])
+            mv_dump[-1].append(min_motion_vector)
+            mv_counter += 1
+            if mv_counter == width // params_i:
+                mv_counter = 0
+    
+        current_reconstructed_frame = construct_predicted_frame(mv_dump, prev_frame, params_i)
+        current_reconstructed_frame = convert_within_range(current_reconstructed_frame)
+
+        reconstructed_frame = Image.fromarray(current_reconstructed_frame)
+        reconstructed_frame.save(output_path.joinpath('{}.png'.format(i)))
+        print("predicted frame {} written".format(i))
+
 if __name__ == '__main__':
     config_class = Config('config.yaml')
     config = config_class.config
@@ -101,6 +136,8 @@ if __name__ == '__main__':
     pngs_path.mkdir(exist_ok=True)
     residual_pngs_path = params_n_path.joinpath('residual_pngs')
     residual_pngs_path.mkdir(exist_ok=True)
+    predicted_pngs_path = params_n_path.joinpath('predicted_pngs')
+    predicted_pngs_path.mkdir(exist_ok=True)
     statistics_file = params_n_path.joinpath('statistics.csv')
 
     data_path = pathlib.Path.cwd().joinpath(config['output_path']['main_folder'])
@@ -108,6 +145,7 @@ if __name__ == '__main__':
     original_path = data_path.joinpath(config['output_path']['original_folder'])
     reconstructed_path = data_path.joinpath(config['output_path']['reconstructed_folder'])
     residual_path = data_path.joinpath(config['output_path']['residual_folder'])
+    mv_path = data_path.joinpath(config['output_path']['mv_folder'])
     meta_file = data_path.joinpath(config['output_path']['meta_file'])
     mae_file = data_path.joinpath(config['output_path']['mae_file'])
 
@@ -126,6 +164,16 @@ if __name__ == '__main__':
             residual_pngs_path,
         ))
         residual_jobs.append(job)
+
+    predicted_job = pool.apply_async(func=predicted_frame_parallel_helper, args=(
+        total_frames,
+        mv_path,
+        reconstructed_path,
+        params_i,
+        predicted_pngs_path,
+        height,
+        width,
+    ))
 
     mae_list = mae_file.read_text().split('\n')
     mae_dict = {}
@@ -179,6 +227,8 @@ if __name__ == '__main__':
 
     for job in residual_jobs:
         job.get()
+
+    predicted_job.get()
 
     pool.close()
     pool.join()

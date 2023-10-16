@@ -85,7 +85,7 @@ def parallel_helper(index, frame, params_i, params_r, prev_frame, y):
         residual_block_dump.append(residual_block_rounded)
     return (index, residual_block_dump, mv_dump, mae_dump)
 
-def calc_motion_vector_parallel_helper(frame, frame_index, prev_frame, prev_index, params_i, params_r, write_data_q, reconstructed_path, predicted_path, pool):
+def calc_motion_vector_parallel_helper(frame, frame_index, prev_frame, prev_index, params_i, params_r, write_data_q, reconstructed_path, pool):
     print("Dispatched", frame_index)
     if prev_index + 1 != frame_index:
         raise Exception('Frame index mismatch. Current: {}, Previous: {}'.format(frame_index, prev_index))
@@ -125,7 +125,6 @@ def calc_motion_vector_parallel_helper(frame, frame_index, prev_frame, prev_inde
     current_reconstructed_frame = convert_within_range(current_reconstructed_frame)
     
     reconstructed_path.joinpath('{}'.format(frame_index)).write_bytes(current_reconstructed_frame)
-    predicted_path.joinpath('{}'.format(frame_index)).write_bytes(convert_within_range(predicted_frame))
     
     write_data_q.put((frame_index, mv_dump, residual_frame, average_mae))
     print('Frame {} done'.format(frame_index))
