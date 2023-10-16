@@ -49,9 +49,6 @@ def calc_motion_vector(block, block_coor, search_window, search_window_coor, par
 
     return min_motion_vector, min_mae, min_yx, min_block
 
-"""
-    TODO: block-level parallelism
-"""
 def calc_motion_vector_helper(frame, frame_index, prev_frame, prev_index, params_i, params_r, write_data_q, reconstructed_path):
     print("Dispatched", frame_index)
     if prev_index + 1 != frame_index:
