@@ -4,29 +4,29 @@ import shutil
 import numpy as np
 import time
 from typing import Callable as function
-from lib.block_processing import calc_motion_vector_helper
+from lib.block_processing import calc_motion_vector_parallel_helper
 
 class MultiProcessingNew:
     def __init__(self, config) -> None:
         self.config_class = config
         self.config = self.config_class.config
         self.manager = mp.Manager()
-        self.pool = mp.Pool(mp.cpu_count() + 2)
+        self.pool = mp.Pool(mp.cpu_count())
         self.jobs = []
         
         self.__debug = self.config['debug'] if 'debug' in self.config else False
 
         self.write_frame_q = self.manager.Queue()
-        self.write_frame_watcher = self.pool.apply_async(write_data_dispatcher, (self.write_frame_q, self.config_class,))
 
         self.signal_q = self.manager.Queue()
-        # self.reconstructed_frame_q = self.manager.Queue()
         self.clean_up()
         self.start()
 
     def start(self):
         self.block_processing_dispatcher_process = mp.Process(target=block_processing_dispatcher, args=(self.signal_q, self.write_frame_q, self.config_class,))
+        self.write_frame_watcher = mp.Process(target=write_data_dispatcher, args=(self.write_frame_q, self.config_class,))
         self.block_processing_dispatcher_process.start()
+        self.write_frame_watcher.start()
 
     """
         Dispatch a job.
@@ -57,12 +57,11 @@ class MultiProcessingNew:
         for job in self.jobs: 
             job.get()
 
-        self.block_processing_dispatcher_process.join()
-        # self.signal_q.put('kill')
-        # self.reconstructed_frame_q.put('kill')
-        self.write_frame_q.put('kill')
         self.pool.close()
         self.pool.join()
+        self.block_processing_dispatcher_process.join()
+        self.write_frame_q.put('kill')
+        self.write_frame_watcher.join()
 
     def clean_up(self):
         output_path = pathlib.Path.cwd().joinpath(self.config_class.get_output_path('main_folder'))
@@ -81,6 +80,8 @@ class MultiProcessingNew:
 # so the execution order is guaranteed
 # no parallelism here, becase we need the reconstructed frame to be written first
 def block_processing_dispatcher(signal_q, write_data_q, config_class):
+    pool = mp.Pool(mp.cpu_count())
+
     params_i = config_class.config['params']['i']
     params_r = config_class.config['params']['r']
     counter = 0
@@ -111,13 +112,15 @@ def block_processing_dispatcher(signal_q, write_data_q, config_class):
             prev_file_bytes = prev_file.read_bytes()
             prev_frame_uint8 = np.frombuffer(prev_file_bytes, dtype=np.uint8).reshape(height, width)
             prev_frame = np.array(prev_frame_uint8, dtype=np.int16)
-        calc_motion_vector_helper(frame, frame_index, prev_frame, prev_index, params_i, params_r, write_data_q, reconstructed_path)
+        calc_motion_vector_parallel_helper(frame, frame_index, prev_frame, prev_index, params_i, params_r, write_data_q, reconstructed_path, pool)
         counter += 1
         if meta_file.exists():
             l = meta_file.read_text().split(',')
             last = int(l[0])
             if counter == last:
                 run_flag = False
+    pool.close()
+    pool.join()
 
 def write_data_dispatcher(q, config_class):
     while True:
