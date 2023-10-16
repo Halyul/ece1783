@@ -46,7 +46,6 @@ if __name__ == '__main__':
         if args.residual:
             data = np.frombuffer(file_bytes, dtype=np.int16).reshape(pad_height, pad_width)
             data = np.abs(data) * args.diff_factor
-            print(data)
         else:
             data = np.frombuffer(file_bytes, dtype=np.uint8).reshape(pad_height, pad_width)
     else:
