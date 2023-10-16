@@ -265,14 +265,14 @@ if __name__ == '__main__':
     plt.plot(array[:, 0], array[:, 1])
     plt.xlabel('frame index')
     plt.ylabel('mae')
-    plt.title('mae for {}\ni={}, r={}, n={}h={}, w={}'.format(video_name, params_i, params_r, params_n, height, width))
+    plt.title('mae for {}\ni={}, r={}, n={}\nh={}, w={}'.format(video_name, params_i, params_r, params_n, height, width))
     plt.savefig(params_n_path.joinpath('mae.png'))
     plt.clf()
 
     plt.plot(array[:, 0], array[:, 2])
     plt.xlabel('frame index')
     plt.ylabel('psnr')
-    plt.title('psnr for {}\ni={}, r={}, n={}h={}, w={}'.format(video_name, params_i, params_r, params_n, height, width))
+    plt.title('psnr for {}\ni={}, r={}, n={}\nh={}, w={}'.format(video_name, params_i, params_r, params_n, height, width))
     plt.savefig(params_n_path.joinpath('psnr.png'))
     plt.clf()
 
