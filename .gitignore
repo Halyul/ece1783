@@ -5,5 +5,5 @@ outputs/*
 y_only/*
 *__pycache__*
 output/* 
-data/*
+statistics/*
 decoder_output/*
