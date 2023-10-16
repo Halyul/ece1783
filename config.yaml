@@ -11,12 +11,12 @@ output_path:
   mae_file: mae.txt
   uv_folder: uv
 params:
-  i: 2 # 2, 8, 64
-  r: 1 # 1, 4, 8
-  n: 1 # 1, 2, 3
+  i: 8 # 2, 8, 64
+  r: 4 # 1, 4, 8
+  n: 3 # 1, 2, 3
 
 statistics:
-  path: data
+  path: reference
 
 decoder:
   input_path:
