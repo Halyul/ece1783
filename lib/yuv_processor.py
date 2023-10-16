@@ -85,14 +85,13 @@ class YUVProcessor:
             else:
                 self.upscale = YUVFormat.YUV444
         self.__offsets = None
-        # self.__func = self.config['output']['func']
         self.__deconstruct()
         return
     
     """
         Deconstruct the YUV file into its components.
     """
-    def __deconstruct(self):
+    def __deconstruct(self) -> None:
         self.__read_header()
         self.__read_frames()
         self.info['frame_count'] = self.__frame_index
@@ -175,8 +174,6 @@ class YUVProcessor:
         raw_header.extend(self.HEADER_IDENTIFIERS['COLOR_SPACE'])
         raw_header.extend(bytes(str(self.upscale.value), 'ascii')) # add upscale
         raw_header.extend(self.__byte) # add END_IDENTIFIER
-        # if self.__func == 'video':
-        #     self.__mp.append(raw_header)
         self.__mp.signal_q.put((self.info['height'], self.info['width']))
         return
     
@@ -184,15 +181,6 @@ class YUVProcessor:
         Read the frames of the YUV file, and then upscale to YUV444.
     """
     def __read_frames(self) -> None:
-        # if self.__func == 'y_only':
-        #     callback = to_y_only_files
-        #     callback_args = (self.config['params']['i'], self.config['params']['diff_factor'],)
-        # elif self.__func == 'pngs':
-        #     callback = to_pngs
-        #     callback_args = (self.config['output']['args']['noise'] if 'noise' in self.config['output']['args'] else None,)
-        # elif self.__func == 'video':
-        #     callback = to_video
-        #     callback_args = (self.upscale,)
         self.__read_byte() # skil END_IDENTIFIER, after this line, self.__byte == b'F'
         while self.__byte != Identifier.END.value:
             # skip first "FRAME"
@@ -228,7 +216,6 @@ class YUVProcessor:
             
             print(self.__frame_index)
             self.__frame_index += 1
-            # break
 
         return
     
@@ -286,6 +273,6 @@ class YUVProcessor:
             key (str): The key of the header info.
             value (str): The value to be appended.
     """
-    def append_to_header_info(self, key: str, value: str):
+    def append_to_header_info(self, key: str, value: str) -> None:
         self.info[key] += value
         return

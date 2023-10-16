@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from lib.utils.config import Config
 import pathlib
 import numpy as np

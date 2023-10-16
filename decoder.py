@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from lib.utils.config import Config
 from lib.utils.misc import convert_within_range, construct_predicted_frame
 import pathlib

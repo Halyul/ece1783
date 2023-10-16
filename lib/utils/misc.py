@@ -103,13 +103,44 @@ def block_create(np_array: np.ndarray, params_i: int) -> tuple:
     np_block_array = np.block(b).reshape(-1, offset, block_size) # (-1,  width // i, i**2)
     return (np_block_array, offset, block_size, np_array_padded)
 
-def rounding(x, base):
+"""
+    Round a number to the nearest multiple of the base.
+
+    Parameters:
+        x (int): The number to round.
+        base (int): The base to round to.
+
+    Returns:
+        (int): The rounded number.
+"""
+def rounding(x: int, base: int) -> int:
     return base * round(x / base)
 
-def convert_within_range(np_array, dtype=np.uint8):
+"""
+    Convert a numpy array to a specific data type, and clip the values to within the range.
+
+    Parameters:
+        np_array (np.ndarray): The numpy array.
+        dtype (np.dtype): The data type to convert to.
+
+    Returns:
+        (np.ndarray): The converted numpy array.
+"""
+def convert_within_range(np_array: np.ndarray, dtype: np.dtype=np.uint8) -> np.ndarray:
     return np.clip(np_array, 0, 255).astype(dtype)
 
-def construct_predicted_frame(mv_dump, prev_frame, params_i):
+"""
+    Construct the predicted frame from the motion vector dump.
+
+    Parameters:
+        mv_dump (list): The motion vector dump.
+        prev_frame (np.ndarray): The previous frame.
+        params_i (int): The block size.
+    
+    Returns:
+        (np.ndarray): The predicted frame.
+"""
+def construct_predicted_frame(mv_dump: list, prev_frame: np.ndarray, params_i: int) -> np.ndarray:
     predicted_frame_dump = []
     y_counter = 0
     x_counter = 0

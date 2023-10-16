@@ -21,8 +21,11 @@ class Config:
     """
         Get the output path.
 
+        Parameters:
+            key (str): The key of the output path.
+
         Returns:
             pathlib.Path: The output path.
     """
-    def get_output_path(self, key) -> pathlib.Path:
+    def get_output_path(self, key: str) -> pathlib.Path:
         return self.config['output_path'][key]

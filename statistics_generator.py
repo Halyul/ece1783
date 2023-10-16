@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from lib.utils.config import Config
 from lib.signal_processing import psnr, ssim
 from lib.utils.misc import convert_within_range, construct_predicted_frame
@@ -8,7 +9,23 @@ from PIL import ImageDraw
 import numpy as np
 import multiprocessing as mp
 
-def add_margin(pil_img, top, right, bottom, left, color):
+"""
+    Add margin to image
+
+    Parameters:
+        pil_image (Image): image to be added margin
+        top (int): top margin
+        right (int): right margin
+        bottom (int): bottom margin
+        left (int): left margin
+        color (int): color of margin
+
+    Returns:
+        result (Image): image with margin
+        new_width (int): new width of image
+        new_height (int): new height of image
+"""
+def add_margin(pil_img: Image, top: int, right: int, bottom: int, left: int, color: int) -> tuple:
     width, height = pil_img.size
     new_width = width + right + left
     new_height = height + top + bottom
@@ -16,7 +33,25 @@ def add_margin(pil_img, top, right, bottom, left, color):
     result.paste(pil_img, (left, top))
     return result, new_width, new_height
 
-def frame_parallel_helper(original_path, reconstructed_path, i, height, width, mae_dict, pngs_path):
+"""
+    Generate statistics for each frame in parallel
+
+    Parameters:
+        original_path (Path): path to original frames
+        reconstructed_path (Path): path to reconstructed frames
+        i (int): frame index
+        height (int): height of frame
+        width (int): width of frame
+        mae_dict (dict): dictionary of mae values
+        pngs_path (Path): path to save pngs
+
+    Returns:
+        i (int): frame index
+        mae_value (float): mae value
+        psnr_value (float): psnr value
+        ssim_value (float): ssim value
+"""
+def frame_parallel_helper(original_path: pathlib.Path, reconstructed_path: pathlib.Path, i: int, height: int, width: int, mae_dict: dict, pngs_path: pathlib.Path) -> tuple:
     original_file = original_path.joinpath(str(i)).read_bytes()
     reconstructed_file = reconstructed_path.joinpath(str(i)).read_bytes()
 
@@ -43,13 +78,24 @@ def frame_parallel_helper(original_path, reconstructed_path, i, height, width, m
     draw.text((5, new_height - 35), 'mae: {}'.format(mae_value), fill=0)
     draw.text((5, new_height - 25), 'psnr: {}'.format(psnr_value), fill=0)
     draw.text((5, new_height - 15), 'ssim: {}'.format(ssim_value), fill=0)
-    draw.text((width // 2, new_height - 45), 'original', fill=0)
-    draw.text((width // 2 * 3, new_height - 45), 'reconstructed', fill=0)
+    draw.text((width // 2 - 20, new_height - 45), 'original', fill=0)
+    draw.text((width // 2 * 3 - 25, new_height - 45), 'reconstructed', fill=0)
     combined.save(pngs_path.joinpath('{}.png'.format(i)))
 
     return (i, mae_value, psnr_value, ssim_value)
 
-def residual_parallel_helper(original_path, residual_path, i, height, width, residual_pngs_path):
+"""
+    Generate residual image comparsion for each frame in parallel
+
+    Parameters:
+        original_path (Path): path to original frames
+        residual_path (Path): path to residual frames
+        i (int): frame index
+        height (int): height of frame
+        width (int): width of frame
+        residual_pngs_path (Path): path to save pngs
+"""
+def residual_parallel_helper(original_path: pathlib.Path, residual_path: pathlib.Path, i: int, height: int, width: int, residual_pngs_path: pathlib.Path) -> None:
     current_file = original_path.joinpath(str(i)).read_bytes()
     prev_file = original_path.joinpath(str(i - 1)).read_bytes()
     generated_residual_file = residual_path.joinpath(str(i)).read_bytes()
@@ -76,7 +122,19 @@ def residual_parallel_helper(original_path, residual_path, i, height, width, res
     draw.text((width // 4 * 5, new_height - 15), 'Abs Diff w/ Motion Compensation', fill=0)
     combined.save(residual_pngs_path.joinpath('{}.png'.format(i)))
 
-def predicted_frame_parallel_helper(total_frames, mv_path, reconstructed_path, params_i, output_path, height, width):
+"""
+    Generate predicted frame in parallel
+
+    Parameters:
+        total_frames (int): total number of frames
+        mv_path (Path): path to motion vectors
+        reconstructed_path (Path): path to reconstructed frames
+        params_i (int): i parameter
+        output_path (Path): path to save pngs
+        height (int): height of frame
+        width (int): width of frame
+"""
+def predicted_frame_parallel_helper(total_frames: int, mv_path: pathlib.Path, reconstructed_path: pathlib.Path, params_i: int, output_path: pathlib.Path, height: int, width: int) -> None:
     for i in range(total_frames):
         prev_index = i - 1
         if prev_index == -1:

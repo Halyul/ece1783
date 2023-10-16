@@ -1,7 +1,7 @@
 # ece1783
 
 ## Entry Points
-- Encoder: `python3 runner.py`
+- Encoder: `python3 encoder.py`
 - Decoder: `python3 decoder.py`
 - Generate Encoder Statistics: `python3 statistics_generator.py`
 - Compare Encoded Output and Decoded Output: `python3 file_compare.py`

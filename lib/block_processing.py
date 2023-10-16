@@ -1,7 +1,24 @@
 import numpy as np
+from multiprocessing import Pool, Queue
+from pathlib import Path
 from lib.utils.misc import rounding, convert_within_range, pixel_create, construct_predicted_frame
 
-def calc_motion_vector(block, block_coor, search_window, search_window_coor, params_i):
+"""
+    Calculate the motion vector for a block from the search window.
+
+    Parameters:
+        block (np.ndarray): The block.
+        block_coor (tuple): The top left coordinates of block.
+        search_window (np.ndarray): The search window.
+        search_window_coor (tuple): The top left coordinates of search window.
+        params_i (int): The block size.
+    
+    Returns:
+        min_mae (int): The minimum mean absolute error.
+        min_motion_vector (tuple): The motion vector (y, x).
+        min_block (np.ndarray): The block from the search window.
+"""
+def calc_motion_vector(block: np.ndarray, block_coor: tuple, search_window: np.ndarray, search_window_coor: tuple, params_i: int) -> tuple:
     min_mae = -1
     min_motion_vector = None
     min_yx = None
@@ -48,7 +65,18 @@ def calc_motion_vector(block, block_coor, search_window, search_window_coor, par
 
     return min_mae, min_motion_vector, min_block
 
-def parallel_helper(index, frame, params_i, params_r, prev_frame, y):
+"""
+    Helper function to calculate the motion vector, residual blocks, and mae values.
+
+    Parameters:
+        index (int): The index of the frame.
+        frame (np.ndarray): The current frame.
+        params_i (int): The block size.
+        params_r (int): The search window size.
+        prev_frame (np.ndarray): The previous frame.
+        y (int): The y coordinate of the block.
+"""
+def parallel_helper(index: int, frame: np.ndarray, params_i: int, params_r: int, prev_frame: np.ndarray, y: int) -> tuple:
     residual_block_dump = []
     mv_dump = []
     mae_dump = []
@@ -85,7 +113,21 @@ def parallel_helper(index, frame, params_i, params_r, prev_frame, y):
         residual_block_dump.append(residual_block_rounded)
     return (index, residual_block_dump, mv_dump, mae_dump)
 
-def calc_motion_vector_parallel_helper(frame, frame_index, prev_frame, prev_index, params_i, params_r, write_data_q, reconstructed_path, pool):
+"""
+    Calculate the motion vector for a block from the search window in parallel.
+
+    Parameters:
+        frame (np.ndarray): The current frame.
+        frame_index (int): The current frame index.
+        prev_frame (np.ndarray): The previous frame.
+        prev_index (int): The previous frame index.
+        params_i (int): The block size.
+        params_r (int): The search window size.
+        write_data_q (Queue): The queue to write data to.
+        reconstructed_path (Path): The path to write the reconstructed frame to.
+        pool (Pool): The pool of processes.
+"""
+def calc_motion_vector_parallel_helper(frame: np.ndarray, frame_index: int, prev_frame: np.ndarray, prev_index: int, params_i: int, params_r: int, write_data_q: Queue, reconstructed_path: Path, pool: Pool) -> None:
     print("Dispatched", frame_index)
     if prev_index + 1 != frame_index:
         raise Exception('Frame index mismatch. Current: {}, Previous: {}'.format(frame_index, prev_index))

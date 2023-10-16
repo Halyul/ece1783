@@ -5,6 +5,7 @@ import numpy as np
 import time
 from typing import Callable as function
 from lib.block_processing import calc_motion_vector_parallel_helper
+from lib.utils.config import Config
 
 class MultiProcessingNew:
     def __init__(self, config) -> None:
@@ -22,7 +23,10 @@ class MultiProcessingNew:
         self.clean_up()
         self.start()
 
-    def start(self):
+    """
+        Start watcher processes.
+    """
+    def start(self) -> None:
         self.block_processing_dispatcher_process = mp.Process(target=block_processing_dispatcher, args=(self.signal_q, self.write_frame_q, self.config_class,))
         self.write_frame_watcher = mp.Process(target=write_data_dispatcher, args=(self.write_frame_q, self.config_class,))
         self.block_processing_dispatcher_process.start()
@@ -51,9 +55,9 @@ class MultiProcessingNew:
         return
     
     """
-        
+        Wait for all jobs to finish. 
     """
-    def done(self):
+    def done(self) -> None:
         for job in self.jobs: 
             job.get()
 
@@ -63,7 +67,10 @@ class MultiProcessingNew:
         self.write_frame_q.put('kill')
         self.write_frame_watcher.join()
 
-    def clean_up(self):
+    """
+        Clean up the output folder.
+    """
+    def clean_up(self) -> None:
         output_path = pathlib.Path.cwd().joinpath(self.config_class.get_output_path('main_folder'))
         if output_path.exists():
             shutil.rmtree(output_path)
@@ -75,11 +82,19 @@ class MultiProcessingNew:
                 output_path.joinpath(value).mkdir(parents=True, exist_ok=True)
         return
 
-# read from output/reconstructed to get the reconstructed frame
-# read from output/original to get the original frame
-# so the execution order is guaranteed
-# no parallelism here, becase we need the reconstructed frame to be written first
-def block_processing_dispatcher(signal_q, write_data_q, config_class):
+"""
+    Dispatch block processing jobs.
+    read from output/reconstructed to get the reconstructed frame
+    read from output/original to get the original frame
+    so the execution order is guaranteed
+    no parallelism here, becase we need the reconstructed frame to be written first
+
+    Parameters:
+        signal_q (mp.Queue): The queue to get signal from.
+        write_data_q (mp.Queue): The queue to write to.
+        config_class (Config): The config object.
+"""
+def block_processing_dispatcher(signal_q: mp.Queue, write_data_q: mp.Queue, config_class: Config) -> None:
     pool = mp.Pool(mp.cpu_count())
 
     params_i = config_class.config['params']['i']
@@ -122,7 +137,14 @@ def block_processing_dispatcher(signal_q, write_data_q, config_class):
     pool.close()
     pool.join()
 
-def write_data_dispatcher(q, config_class):
+"""
+    Write data to disk.
+
+    Parameters:
+        q (mp.Queue): The queue to read from.
+        config_class (Config): The config object.
+"""
+def write_data_dispatcher(q: mp.Queue, config_class: Config) -> None:
     while True:
         data = q.get()
         if data == 'kill':

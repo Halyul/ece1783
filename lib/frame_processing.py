@@ -2,15 +2,16 @@ from lib.utils.enums import YUVFormat
 import numpy as np
 import pathlib
 from lib.utils.misc import get_padding, convert_within_range
+from lib.utils.config import Config
 
 """
     Upscale the frame to YUV444.
 
     Parameters:
         data (tuple): The data to upscale.
-        q (Queue): The queue to write to.
+        config_class (Config): The config object.
 """
-def upscale(data: tuple, config_class):
+def upscale(data: tuple, config_class: Config) -> None:
     (width, frame_index, format_tuple, yuv_components, mode) = data
 
     pixel_list = []

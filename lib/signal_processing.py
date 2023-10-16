@@ -70,19 +70,3 @@ def ssim(y_padded: np.ndarray, y_averaged: np.ndarray) -> np.ndarray:
     sigma2_sq = signal.convolve2d(window, y_averaged_float64 * y_averaged_float64, mode='valid') - mu2_sq
     sigma12 = signal.convolve2d(window, y_padded_float64 * y_averaged_float64, mode='valid') - mu1_mu2
     return ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / ((mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2))
-
-if __name__ == "__main__":
-    from matplotlib import pyplot as plt
-    import pathlib
-
-    with open(pathlib.Path.cwd().joinpath("y_only", "0.y-only-padded"), 'rb') as f:
-        file_bytes = f.read()
-    file_bytes = np.frombuffer(file_bytes, dtype=np.uint8).reshape(288, 352)
-    with open(pathlib.Path.cwd().joinpath("y_only", "0.y-only-averaged"), 'rb') as f:
-        x = f.read()
-    x = np.frombuffer(x, dtype=np.uint8).reshape(288, 352)
-    ssim_map = ssim(file_bytes, x)
-    print(ssim_map.mean())
-    print(psnr(file_bytes, x))
-    plt.imshow(ssim_map, interpolation='nearest', cmap='gray')
-    plt.show()

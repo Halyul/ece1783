@@ -4,7 +4,7 @@ import argparse
 import pathlib
 import numpy as np
 from lib.utils.config import Config
-from lib.utils.misc import get_padding, yuv2rgb, convert_within_range
+from lib.utils.misc import get_padding, yuv2rgb
 
 CONFIG = Config('config.yaml').config
 

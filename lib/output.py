@@ -3,7 +3,7 @@ from multiprocessing import Queue
 
 from lib.utils.enums import YUVFormat, Identifier
 from lib.utils.misc import yuv2rgb, pixel_create
-from lib.block_processing import block_create
+from lib.utils.misc import block_create
 
 """
     Output the frame to y-only files.
