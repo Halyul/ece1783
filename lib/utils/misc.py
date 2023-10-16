@@ -109,25 +109,16 @@ def rounding(x, base):
 def convert_within_range(np_array, dtype=np.uint8):
     return np.clip(np_array, 0, 255).astype(dtype)
 
-def reconstruct_frame(mv_dump, prev_frame, residual_frame, params_i, height, width):
-    reconstructed_frame = []
-    reconstructed_counter = 0
+def construct_predicted_frame(mv_dump, prev_frame, params_i):
+    predicted_frame_dump = []
     y_counter = 0
     x_counter = 0
-    for mv_row in mv_dump:
-        reconstructed_frame.append([])
-        for mv in mv_row:
-            yx = mv
-            block_coor = (y_counter, x_counter)
-            block_in_prev_frame = prev_frame[yx[0]:yx[0] + params_i, yx[1]:yx[1] + params_i]
-            residual_block = residual_frame[block_coor[0]:block_coor[0] + params_i, block_coor[1]:block_coor[1] + params_i]
-            if residual_block.shape != block_in_prev_frame.shape:
-                raise Exception('Shape mismatch. Current frame: {}, Previous frame: {}, Residual block: {}. YX: {}'.format(residual_frame.shape, prev_frame.shape, residual_block.shape, yx))
-            reconstructed_block = block_in_prev_frame + residual_block
-            reconstructed_frame[reconstructed_counter].append(reconstructed_block)
+    for i in range(len(mv_dump)):
+        predicted_frame_dump.append([])
+        for j in range(len(mv_dump[i])):
+            top_left = mv_dump[i][j]
+            predicted_frame_dump[i].append(prev_frame[y_counter + top_left[0]:y_counter + top_left[0] + params_i, x_counter + top_left[1]:x_counter + top_left[1] + params_i])
             x_counter += params_i
-        reconstructed_counter += 1
         y_counter += params_i
         x_counter = 0
-    current_reconstructed_frame = pixel_create(np.array(reconstructed_frame), (height, width), params_i)
-    return current_reconstructed_frame
+    return pixel_create(np.array(predicted_frame_dump), prev_frame.shape, params_i)

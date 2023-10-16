@@ -7,13 +7,15 @@ output_path:
   reconstructed_folder: reconstructed
   residual_folder: residual
   mv_folder: mv
+  predicted_folder: predicted
   meta_file: meta
   mae_file: mae.txt
   uv_folder: uv
 params:
-  i: 8 # 2, 8, 64
-  r: 4 # 1, 4, 8
-  n: 3 # 1, 2, 3
+  i: 2 # 2, 8, 64
+  r: 1 # 1, 4, 8
+  n: 1 # 1, 2, 3
+  stop_at: 10 # stop after processing how many frames, -1 to disable
 
 statistics:
   path: statistics

@@ -1,5 +1,5 @@
 from lib.utils.config import Config
-from lib.utils.misc import convert_within_range, reconstruct_frame
+from lib.utils.misc import convert_within_range, construct_predicted_frame
 import pathlib
 import numpy as np
 
@@ -39,16 +39,16 @@ for i in range(total_frames):
     for line in mv_file_lines:
         if line == '':
             continue
-        min_yx_y, min_yx_x = line.split(' ')
-        min_yx = (int(min_yx_y), int(min_yx_x))
+        min_motion_vector_y, min_motion_vector_x = line.split(' ')
+        min_motion_vector = (int(min_motion_vector_y), int(min_motion_vector_x))
         if mv_counter == 0:
             mv_dump.append([])
-        mv_dump[-1].append(min_yx)
+        mv_dump[-1].append(min_motion_vector)
         mv_counter += 1
         if mv_counter == width // params_i:
             mv_counter = 0
     
-    current_reconstructed_frame = reconstruct_frame(mv_dump, prev_frame, residual_frame, params_i, height, width)
+    current_reconstructed_frame = construct_predicted_frame(mv_dump, prev_frame, params_i) + residual_frame
     current_reconstructed_frame = convert_within_range(current_reconstructed_frame)
 
     output_path.joinpath('{}'.format(i)).write_bytes(current_reconstructed_frame)

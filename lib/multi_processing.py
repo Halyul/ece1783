@@ -99,6 +99,7 @@ def block_processing_dispatcher(signal_q, write_data_q, config_class):
         frame = np.array(frame_uint8, dtype=np.int16)
         frame_index = counter
         reconstructed_path = pathlib.Path.cwd().joinpath(config_class.get_output_path('main_folder'), config_class.get_output_path('reconstructed_folder'))
+        predicted_path = pathlib.Path.cwd().joinpath(config_class.get_output_path('main_folder'), config_class.get_output_path('predicted_folder'))
         if frame_index == 0:
             prev_index = -1
             prev_frame = np.full(height*width, 128).reshape(height, width)
@@ -112,7 +113,7 @@ def block_processing_dispatcher(signal_q, write_data_q, config_class):
             prev_file_bytes = prev_file.read_bytes()
             prev_frame_uint8 = np.frombuffer(prev_file_bytes, dtype=np.uint8).reshape(height, width)
             prev_frame = np.array(prev_frame_uint8, dtype=np.int16)
-        calc_motion_vector_parallel_helper(frame, frame_index, prev_frame, prev_index, params_i, params_r, write_data_q, reconstructed_path, pool)
+        calc_motion_vector_parallel_helper(frame, frame_index, prev_frame, prev_index, params_i, params_r, write_data_q, reconstructed_path, predicted_path, pool)
         counter += 1
         if meta_file.exists():
             l = meta_file.read_text().split(',')
@@ -132,8 +133,8 @@ def write_data_dispatcher(q, config_class):
         mv_dump_text = ''
         for i in range(len(mv_dump)):
             for j in range(len(mv_dump[i])):
-                min_yx = mv_dump[i][j]
-                mv_dump_text += '{} {}\n'.format(min_yx[0], min_yx[1])
+                min_motion_vector = mv_dump[i][j]
+                mv_dump_text += '{} {}\n'.format(min_motion_vector[0], min_motion_vector[1])
 
         pathlib.Path.cwd().joinpath(config_class.get_output_path('main_folder'), config_class.get_output_path('mv_folder'), '{}'.format(frame_index)).write_text(str(mv_dump_text))
 

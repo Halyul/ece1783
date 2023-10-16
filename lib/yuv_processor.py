@@ -75,7 +75,7 @@ class YUVProcessor:
         self.__byte = None
         self.__format = None
         self.__frame_index = 0
-
+        self.__stop_at = self.config['params']['stop_at']
         self.upscale = self.config['upscale']
         if self.upscale:
             if self.upscale == 420:
@@ -201,6 +201,9 @@ class YUVProcessor:
 
         while not self.__eof():
             
+            if self.__frame_index == self.__stop_at:
+                break
+
             result = bytearray()
             while not ((len(result) > 6 and result[-len(Identifier.FRAME.value):] == Identifier.FRAME.value) or self.__eof()):
                 # read yuv components + "FRAME"
