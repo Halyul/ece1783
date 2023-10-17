@@ -1,4 +1,5 @@
 import pathlib
+import math
 from lib.utils.config import Config
 from lib.utils.enums import YUVFormat, Identifier
 from lib.utils.misc import get_padding
@@ -85,8 +86,21 @@ class YUVProcessor:
             else:
                 self.upscale = YUVFormat.YUV444
         self.__offsets = None
+        self.__precheck()
         self.__deconstruct()
         return
+    
+    """
+        Check if the parameters are valid.
+
+        Raises:
+            Exception: Invalid qp value.
+    """
+    def __precheck(self):
+        params_i = self.config['params']['i']
+        params_qp = self.config['params']['qp']
+        if not (0 <= params_qp <= (math.log2(params_i) + 7)):
+            raise Exception('Invalid qp value.')
     
     """
         Deconstruct the YUV file into its components.
@@ -96,7 +110,7 @@ class YUVProcessor:
         self.__read_frames()
         self.info['frame_count'] = self.__frame_index
         paded_width, paded_height = get_padding(self.info['width'], self.info['height'], self.config['params']['i'])
-        pathlib.Path.cwd().joinpath(self.__config.get_output_path('main_folder'), self.__config.get_output_path('meta_file')).write_text(str("{},{},{},{}".format(self.__frame_index, paded_height, paded_width, self.config['params']['i'])))
+        pathlib.Path.cwd().joinpath(self.__config.get_output_path('main_folder'), self.__config.get_output_path('meta_file')).write_text(str("{},{},{},{},{}".format(self.__frame_index, paded_height, paded_width, self.config['params']['i'], self.config['params']['qp'])))
 
         self.__mp.done()
         return

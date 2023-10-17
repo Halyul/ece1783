@@ -1,7 +1,7 @@
 import numpy as np
 from multiprocessing import Pool, Queue
 from pathlib import Path
-from lib.utils.misc import convert_within_range, construct_predicted_frame, dct2, residual_coefficients_to_residual_frame, pixel_create
+from lib.utils.misc import *
 
 """
     Calculate the motion vector for a block from the search window.
@@ -73,11 +73,11 @@ def calc_motion_vector(block: np.ndarray, block_coor: tuple, search_window: np.n
         frame (np.ndarray): The current frame.
         params_i (int): The block size.
         params_r (int): The search window size.
-        params_n (int): The base of 2 ^ n.
+        q_matrix (np.ndarray): The quantization matrix.
         prev_frame (np.ndarray): The previous frame.
         y (int): The y coordinate of the block.
 """
-def parallel_helper(index: int, frame: np.ndarray, params_i: int, params_r: int, params_n: int, prev_frame: np.ndarray, y: int) -> tuple:
+def parallel_helper(index: int, frame: np.ndarray, params_i: int, params_r: int, q_matrix: np.ndarray, prev_frame: np.ndarray, y: int) -> tuple:
     residual_block_dump = []
     mv_dump = []
     mae_dump = []
@@ -111,7 +111,8 @@ def parallel_helper(index: int, frame: np.ndarray, params_i: int, params_r: int,
 
         residual_block = centered_block - min_block
         residual_block_transformed = dct2(residual_block).astype(int)
-        residual_block_dump.append(residual_block_transformed)
+        qtc_dump = tc_to_qtc(residual_block_transformed, q_matrix)
+        residual_block_dump.append(qtc_dump)
     return (index, residual_block_dump, mv_dump, mae_dump)
 
 """
@@ -124,12 +125,12 @@ def parallel_helper(index: int, frame: np.ndarray, params_i: int, params_r: int,
         prev_index (int): The previous frame index.
         params_i (int): The block size.
         params_r (int): The search window size.
-        params_n (int): The base of 2 ^ n.
+        q_matrix (np.ndarray): The quantization matrix.
         write_data_q (Queue): The queue to write data to.
         reconstructed_path (Path): The path to write the reconstructed frame to.
         pool (Pool): The pool of processes.
 """
-def calc_motion_vector_parallel_helper(frame: np.ndarray, frame_index: int, prev_frame: np.ndarray, prev_index: int, params_i: int, params_r: int, params_n: int, write_data_q: Queue, reconstructed_path: Path, pool: Pool) -> None:
+def calc_motion_vector_parallel_helper(frame: np.ndarray, frame_index: int, prev_frame: np.ndarray, prev_index: int, params_i: int, params_r: int, q_matrix: np.ndarray, write_data_q: Queue, reconstructed_path: Path, pool: Pool) -> None:
     print("Dispatched", frame_index)
     if prev_index + 1 != frame_index:
         raise Exception('Frame index mismatch. Current: {}, Previous: {}'.format(frame_index, prev_index))
@@ -143,7 +144,7 @@ def calc_motion_vector_parallel_helper(frame: np.ndarray, frame_index: int, prev
             frame, 
             params_i, 
             params_r, 
-            params_n,
+            q_matrix,
             prev_frame,
             y,
         ))
@@ -154,15 +155,16 @@ def calc_motion_vector_parallel_helper(frame: np.ndarray, frame_index: int, prev
         results.append(job.get())
     
     mv_dump = [None] * len(results)
-    residual_block_dump = [None] * len(results) 
+    qtc_block_dump = [None] * len(results) 
     mae_dump = [None] * len(results)
     for result in results:
         index = result[0]
-        residual_block_dump[index] = result[1]
+        qtc_block_dump[index] = result[1]
         mv_dump[index] = result[2]
         mae_dump[index] = result[3]
     
-    residual_block_dump = np.array(residual_block_dump)
+    qtc_block_dump = np.array(qtc_block_dump)
+    residual_block_dump = frame_qtc_to_tc(qtc_block_dump, q_matrix)
     predicted_frame = construct_predicted_frame(mv_dump, prev_frame, params_i)
     residual_frame = residual_coefficients_to_residual_frame(residual_block_dump, params_i, frame.shape)
     average_mae = np.array(mae_dump).mean().astype(int)
@@ -172,5 +174,5 @@ def calc_motion_vector_parallel_helper(frame: np.ndarray, frame_index: int, prev
     
     reconstructed_path.joinpath('{}'.format(frame_index)).write_bytes(current_reconstructed_frame)
     
-    write_data_q.put((frame_index, mv_dump, pixel_create(residual_block_dump, frame.shape, params_i), average_mae))
+    write_data_q.put((frame_index, mv_dump, pixel_create(qtc_block_dump, frame.shape, params_i), average_mae))
     print('Frame {} done'.format(frame_index))

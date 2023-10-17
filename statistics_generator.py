@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from lib.utils.config import Config
 from lib.signal_processing import psnr, ssim
-from lib.utils.misc import convert_within_range, construct_predicted_frame, block_create, residual_coefficients_to_residual_frame
+from lib.utils.misc import *
 import matplotlib.pyplot as plt
 import pathlib
 from PIL import Image
@@ -95,8 +95,9 @@ def frame_parallel_helper(original_path: pathlib.Path, reconstructed_path: pathl
         width (int): width of frame
         residual_pngs_path (Path): path to save pngs
         params_i (int): block size parameter
+        q_matrix (np.ndarray): quantization matrix
 """
-def residual_parallel_helper(original_path: pathlib.Path, residual_path: pathlib.Path, i: int, height: int, width: int, residual_pngs_path: pathlib.Path, params_i: int) -> None:
+def residual_parallel_helper(original_path: pathlib.Path, residual_path: pathlib.Path, i: int, height: int, width: int, residual_pngs_path: pathlib.Path, params_i: int, q_matrix: np.ndarray) -> None:
     current_file = original_path.joinpath(str(i)).read_bytes()
     prev_file = original_path.joinpath(str(i - 1)).read_bytes()
     generated_residual_file = residual_path.joinpath(str(i)).read_bytes()
@@ -104,7 +105,8 @@ def residual_parallel_helper(original_path: pathlib.Path, residual_path: pathlib
     current_frame = np.frombuffer(current_file, dtype=np.uint8).reshape(height, width).astype(np.int16)
     prev_frame = np.frombuffer(prev_file, dtype=np.uint8).reshape(height, width).astype(np.int16)
     generated_residual_frame_np_array = np.frombuffer(generated_residual_file, dtype=np.int16).reshape(height, width)
-    residual_frame_coefficients, _, _, _ = block_create(generated_residual_frame_np_array, params_i)
+    residual_frame_qtc, _, _, _ = block_create(generated_residual_frame_np_array, params_i)
+    residual_frame_coefficients = frame_qtc_to_tc(residual_frame_qtc, q_matrix)
     generated_residual_frame = residual_coefficients_to_residual_frame(residual_frame_coefficients, params_i, (height, width)).astype(np.int16)
 
     residual_frame = current_frame - prev_frame
@@ -183,7 +185,7 @@ if __name__ == '__main__':
     video_name = config['input'].split('/')[-1]
     params_i = config['params']['i']
     params_r = config['params']['r']
-    params_n = config['params']['n']
+    params_qp = config['params']['qp']
 
     video_path = output_path.joinpath(video_name)
     video_path.mkdir(exist_ok=True)
@@ -191,15 +193,15 @@ if __name__ == '__main__':
     params_i_path.mkdir(exist_ok=True)
     params_r_path = params_i_path.joinpath('r_{}'.format(params_r))
     params_r_path.mkdir(exist_ok=True)
-    params_n_path = params_r_path.joinpath('n_{}'.format(params_n))
-    params_n_path.mkdir(exist_ok=True)
-    pngs_path = params_n_path.joinpath('pngs')
+    params_qp_path = params_r_path.joinpath('qp_{}'.format(params_qp))
+    params_qp_path.mkdir(exist_ok=True)
+    pngs_path = params_qp_path.joinpath('pngs')
     pngs_path.mkdir(exist_ok=True)
-    residual_pngs_path = params_n_path.joinpath('residual_pngs')
+    residual_pngs_path = params_qp_path.joinpath('residual_pngs')
     residual_pngs_path.mkdir(exist_ok=True)
-    predicted_pngs_path = params_n_path.joinpath('predicted_pngs')
+    predicted_pngs_path = params_qp_path.joinpath('predicted_pngs')
     predicted_pngs_path.mkdir(exist_ok=True)
-    statistics_file = params_n_path.joinpath('statistics.csv')
+    statistics_file = params_qp_path.joinpath('statistics.csv')
 
     data_path = pathlib.Path.cwd().joinpath(config['output_path']['main_folder'])
     mv_path = data_path.joinpath(config['output_path']['mv_folder'])
@@ -213,6 +215,9 @@ if __name__ == '__main__':
     l = meta_file.read_text().split(',')
     total_frames = int(l[0])
     height, width = int(l[1]), int(l[2])
+    params_i = int(l[3])
+    params_qp = int(l[4])
+    q_matrix = quantization_matrix(params_i, params_qp)
 
     residual_jobs = []
     for i in range(1, total_frames):
@@ -224,6 +229,7 @@ if __name__ == '__main__':
             width,
             residual_pngs_path,
             params_i,
+            q_matrix,
         ))
         residual_jobs.append(job)
 
@@ -269,22 +275,22 @@ if __name__ == '__main__':
     plt.plot(array[:, 0], array[:, 1])
     plt.xlabel('frame index')
     plt.ylabel('mae')
-    plt.title('mae for {}\ni={}, r={}, n={}\nh={}, w={}'.format(video_name, params_i, params_r, params_n, height, width))
-    plt.savefig(params_n_path.joinpath('mae.png'))
+    plt.title('mae for {}\ni={}, r={}, qp={}\nh={}, w={}'.format(video_name, params_i, params_r, params_qp, height, width))
+    plt.savefig(params_qp_path.joinpath('mae.png'))
     plt.clf()
 
     plt.plot(array[:, 0], array[:, 2])
     plt.xlabel('frame index')
     plt.ylabel('psnr')
-    plt.title('psnr for {}\ni={}, r={}, n={}\nh={}, w={}'.format(video_name, params_i, params_r, params_n, height, width))
-    plt.savefig(params_n_path.joinpath('psnr.png'))
+    plt.title('psnr for {}\ni={}, r={}, qp={}\nh={}, w={}'.format(video_name, params_i, params_r, params_qp, height, width))
+    plt.savefig(params_qp_path.joinpath('psnr.png'))
     plt.clf()
 
     plt.plot(array[:, 0], array[:, 3])
     plt.xlabel('frame index')
     plt.ylabel('ssim')
-    plt.title('ssim for {}\ni={}, r={}, n={}\nh={}, w={}'.format(video_name, params_i, params_r, params_n, height, width))
-    plt.savefig(params_n_path.joinpath('ssim.png'))
+    plt.title('ssim for {}\ni={}, r={}, qp={}\nh={}, w={}'.format(video_name, params_i, params_r, params_qp, height, width))
+    plt.savefig(params_qp_path.joinpath('ssim.png'))
     plt.clf()
 
     for job in residual_jobs:

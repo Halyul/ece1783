@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from lib.utils.config import Config
-from lib.utils.misc import convert_within_range, construct_predicted_frame, residual_coefficients_to_residual_frame, block_create
+from lib.utils.misc import *
 import pathlib
 import numpy as np
 
@@ -19,6 +19,8 @@ l = meta_file.read_text().split(',')
 total_frames = int(l[0])
 height, width = int(l[1]), int(l[2])
 params_i = int(l[3])
+params_qp = int(l[4])
+q_matrix = quantization_matrix(params_i, params_qp)
 
 for i in range(total_frames):
     prev_index = i - 1
@@ -31,7 +33,8 @@ for i in range(total_frames):
         prev_frame = np.array(prev_frame_uint8, dtype=np.int16)
     residual_file = residual_path.joinpath('{}'.format(i))
     residual_file_bytes = residual_file.read_bytes()
-    residual_frame_coefficients, _, _, _ = block_create(np.frombuffer(residual_file_bytes, dtype=np.int16).reshape(height, width), params_i)
+    residual_frame_qtc, _, _, _ = block_create(np.frombuffer(residual_file_bytes, dtype=np.int16).reshape(height, width), params_i)
+    residual_frame_coefficients = frame_qtc_to_tc(residual_frame_qtc, q_matrix)
     residual_frame = residual_coefficients_to_residual_frame(residual_frame_coefficients, params_i, (height, width))
     
     mv_file = mv_path.joinpath('{}'.format(i))

@@ -224,3 +224,65 @@ def frame_idct2(np_array: np.ndarray, params_i: int) -> np.ndarray:
 """
 def residual_coefficients_to_residual_frame(residual_coefficients: np.ndarray, params_i: int, shape: tuple) -> np.ndarray:
     return pixel_create(frame_idct2(residual_coefficients, params_i), shape, params_i)
+
+"""
+    Generate quantization matrix.
+
+    Parameters:
+        params_i (int): The block size.
+        params_qp (int): The quantization parameter.
+    
+    Returns:
+        (np.ndarray): The quantization matrix.
+"""
+def quantization_matrix(params_i: int, params_qp: int) -> np.ndarray:
+    np_array = np.empty((params_i, params_i))
+    for x in range(params_i):
+        for y in range(params_i):
+            if x + y < params_i - 1:
+                np_array[x][y] = 2 ** params_qp
+            elif x + y == params_i - 1:
+                np_array[x][y] = 2 ** (params_qp + 1)
+            else:
+                np_array[x][y] = 2 ** (params_qp + 2)
+    return np_array.astype(int)
+
+"""
+    Transform coefficients into quantized coefficients.
+
+    Parameters:
+        coefficients (np.ndarray): The coefficients.
+        q_matrix (np.ndarray): The quantization matrix.
+    
+    Returns:
+        (np.ndarray): The quantized coefficients.
+"""
+def tc_to_qtc(block: np.ndarray, q_matrix: np.ndarray) -> np.ndarray:
+    return np.round(block / q_matrix).astype(int)
+
+"""
+    Transform quantized coefficients into coefficients.
+
+    Parameters:
+        qtc (np.ndarray): The quantized coefficients.
+        q_matrix (np.ndarray): The quantization matrix.
+    
+    Returns:
+        (np.ndarray): The coefficients.
+"""
+def qtc_to_tc(block: np.ndarray, q_matrix: np.ndarray) -> np.ndarray:
+    return block * q_matrix
+
+def frame_qtc_to_tc(frame_qtc: np.ndarray, q_matrix: np.ndarray) -> np.ndarray:
+    new_array = np.empty(frame_qtc.shape)
+    for y in range(frame_qtc.shape[0]):
+        for x in range(frame_qtc.shape[1]):
+            new_array[y, x] = qtc_to_tc(frame_qtc[y, x], q_matrix)
+    return new_array
+
+def frame_tc_to_qtc(frame_tc: np.ndarray, q_matrix: np.ndarray) -> np.ndarray:
+    new_array = np.empty(frame_tc.shape)
+    for y in range(frame_tc.shape[0]):
+        for x in range(frame_tc.shape[1]):
+            new_array[y, x] = tc_to_qtc(frame_tc[y, x], q_matrix)
+    return new_array

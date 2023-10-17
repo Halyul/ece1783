@@ -13,8 +13,8 @@ output_path:
 params:
   i: 2 # 2, 8, 64
   r: 1 # 1, 4, 8
-  n: 1 # 1, 2, 3
   stop_at: -1 # stop after processing how many frames, -1 to disable
+  qp: 6
 
 statistics:
   path: statistics
