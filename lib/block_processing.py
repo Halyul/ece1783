@@ -82,26 +82,10 @@ def parallel_helper(index: int, frame: np.ndarray, params_i: int, params_r: int,
     mv_dump = []
     mae_dump = []
     for x in range(0, frame.shape[1], params_i):
-        top_left = centered_top_left = (y, x)
-        centered_block = frame[top_left[0]:top_left[0] + params_i, top_left[1]:top_left[1] + params_i]
-        bottom_right = (top_left[0] + params_i, top_left[1] + params_i)
+        centered_top_left = (y, x)
+        centered_block = frame[centered_top_left[0]:centered_top_left[0] + params_i, centered_top_left[1]:centered_top_left[1] + params_i]
 
-        y_offset = top_left[0] - params_r
-        if y_offset >= 0:
-            top_left = (y_offset, top_left[1])
-            bottom_right = (bottom_right[0] + params_r, bottom_right[1])
-        else:
-            top_left = (0, top_left[1])
-            bottom_right = (bottom_right[0] + params_r, bottom_right[1])
-
-        # set the bottom right corner of the search window
-        x_offset = top_left[1] - params_r
-        if x_offset >= 0:
-            top_left = (top_left[0], x_offset)
-            bottom_right = (bottom_right[0], bottom_right[1] + params_r)
-        else:
-            top_left = (top_left[0], 0)
-            bottom_right = (bottom_right[0], bottom_right[1] + params_r)
+        top_left, bottom_right = extend_block(centered_top_left, params_i, (params_r, params_r, params_r, params_r), frame.shape)
         
         search_window = prev_frame[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
 

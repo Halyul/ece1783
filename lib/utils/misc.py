@@ -273,6 +273,16 @@ def tc_to_qtc(block: np.ndarray, q_matrix: np.ndarray) -> np.ndarray:
 def qtc_to_tc(block: np.ndarray, q_matrix: np.ndarray) -> np.ndarray:
     return block * q_matrix
 
+"""
+    Process full residual frame quantized coefficients to coefficients.
+
+    Parameters:
+        frame_qtc (np.ndarray): The quantized coefficients.
+        q_matrix (np.ndarray): The quantization matrix.
+    
+    Returns:
+        (np.ndarray): The coefficients.
+"""
 def frame_qtc_to_tc(frame_qtc: np.ndarray, q_matrix: np.ndarray) -> np.ndarray:
     new_array = np.empty(frame_qtc.shape)
     for y in range(frame_qtc.shape[0]):
@@ -280,9 +290,48 @@ def frame_qtc_to_tc(frame_qtc: np.ndarray, q_matrix: np.ndarray) -> np.ndarray:
             new_array[y, x] = qtc_to_tc(frame_qtc[y, x], q_matrix)
     return new_array
 
+"""
+    Process full residual frame coefficients to quantized coefficients.
+
+    Parameters:
+        frame_tc (np.ndarray): The coefficients.
+        q_matrix (np.ndarray): The quantization matrix.
+
+    Returns:
+        (np.ndarray): The quantized coefficients.
+"""
 def frame_tc_to_qtc(frame_tc: np.ndarray, q_matrix: np.ndarray) -> np.ndarray:
     new_array = np.empty(frame_tc.shape)
     for y in range(frame_tc.shape[0]):
         for x in range(frame_tc.shape[1]):
             new_array[y, x] = tc_to_qtc(frame_tc[y, x], q_matrix)
     return new_array
+
+"""
+    Extend the block to include the margin.
+
+    Parameters:
+        original_top_left (tuple): The top left corner of the block.
+        params_i (int): The block size.
+        margin (tuple): The margin (top, right, bottom, left).
+        shape (tuple): The shape of the frame (height, width).
+
+    Returns:
+        (tuple): The extended block (top_left, bottom_right).
+"""
+def extend_block(original_top_left: tuple, params_i: int, margin: tuple, shape: tuple) -> tuple:
+    top, right, bottom, left = margin
+    max_height, max_width = shape
+    top_left = (original_top_left[0] - top, original_top_left[1] - left)
+    if top_left[0] < 0:
+        top_left = (0, top_left[1])
+    if top_left[1] < 0:
+        top_left = (top_left[0], 0)
+
+    bottom_right = (original_top_left[0] + params_i + bottom, original_top_left[1] + params_i + right)
+    if bottom_right[0] > max_height:
+        bottom_right = (max_height, bottom_right[1])
+    if bottom_right[1] > max_width:
+        bottom_right = (bottom_right[0], max_width)
+    
+    return top_left, bottom_right
