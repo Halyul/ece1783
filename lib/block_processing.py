@@ -153,6 +153,7 @@ def calc_motion_vector_parallel_helper(frame: np.ndarray, frame_index: int, prev
     for job in jobs:
         results.append(job.get())
     
+    results.sort(key=lambda x: x[0])
     mv_dump = [None] * len(results)
     residual_block_dump = [None] * len(results) 
     mae_dump = [None] * len(results)
