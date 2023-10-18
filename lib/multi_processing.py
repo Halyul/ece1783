@@ -156,10 +156,14 @@ def write_data_dispatcher(q: mp.Queue, config_class: Config) -> None:
         frame_index, mv_dump, residual_frame, average_mae = data
 
         mv_dump_text = ''
-        for i in range(len(mv_dump)):
-            for j in range(len(mv_dump[i])):
-                min_motion_vector = mv_dump[i][j]
-                mv_dump_text += '{} {}\n'.format(min_motion_vector[0], min_motion_vector[1])
+        is_intraframe = mv_dump[0]
+        for object in mv_dump[1]:
+            for item in object:
+                min_motion_vector = item
+                if is_intraframe:
+                    mv_dump_text += '{}\n'.format(min_motion_vector)
+                else:
+                    mv_dump_text += '{} {}\n'.format(min_motion_vector[0], min_motion_vector[1])
 
         pathlib.Path.cwd().joinpath(config_class.get_output_path('main_folder'), config_class.get_output_path('mv_folder'), '{}'.format(frame_index)).write_text(str(mv_dump_text))
 

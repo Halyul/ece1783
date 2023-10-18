@@ -20,17 +20,24 @@ total_frames = int(l[0])
 height, width = int(l[1]), int(l[2])
 params_i = int(l[3])
 params_qp = int(l[4])
+params_i_period = int(l[5])
 q_matrix = quantization_matrix(params_i, params_qp)
 
 for i in range(total_frames):
-    prev_index = i - 1
-    if prev_index == -1:
-        prev_frame = np.full(height*width, 128).reshape(height, width)
+    is_intraframe = False
+    if i % params_i_period == 0:
+        prev_frame = None
+        is_intraframe = True
     else:
-        prev_file = output_path.joinpath('{}'.format(prev_index))
-        prev_file_bytes = prev_file.read_bytes()
-        prev_frame_uint8 = np.frombuffer(prev_file_bytes, dtype=np.uint8).reshape(height, width)
-        prev_frame = np.array(prev_frame_uint8, dtype=np.int16)
+        prev_index = i - 1
+        if prev_index == -1:
+            prev_frame = np.full(height*width, 128).reshape(height, width)
+        else:
+            prev_file = output_path.joinpath('{}'.format(prev_index))
+            prev_file_bytes = prev_file.read_bytes()
+            prev_frame_uint8 = np.frombuffer(prev_file_bytes, dtype=np.uint8).reshape(height, width)
+            prev_frame = np.array(prev_frame_uint8, dtype=np.int16)
+
     residual_file = residual_path.joinpath('{}'.format(i))
     residual_file_bytes = residual_file.read_bytes()
     residual_frame_qtc, _, _, _ = block_create(np.frombuffer(residual_file_bytes, dtype=np.int16).reshape(height, width), params_i)
@@ -44,8 +51,11 @@ for i in range(total_frames):
     for line in mv_file_lines:
         if line == '':
             continue
-        min_motion_vector_y, min_motion_vector_x = line.split(' ')
-        min_motion_vector = (int(min_motion_vector_y), int(min_motion_vector_x))
+        if is_intraframe:
+            min_motion_vector = int(line)
+        else:
+            min_motion_vector_y, min_motion_vector_x = line.split(' ')
+            min_motion_vector = (int(min_motion_vector_y), int(min_motion_vector_x))
         if mv_counter == 0:
             mv_dump.append([])
         mv_dump[-1].append(min_motion_vector)
@@ -53,7 +63,7 @@ for i in range(total_frames):
         if mv_counter == width // params_i:
             mv_counter = 0
     
-    current_reconstructed_frame = construct_predicted_frame(mv_dump, prev_frame, params_i) + residual_frame
+    current_reconstructed_frame = construct_reconstructed_frame(mv_dump, prev_frame, residual_frame, params_i)
     current_reconstructed_frame = convert_within_range(current_reconstructed_frame)
 
     output_path.joinpath('{}'.format(i)).write_bytes(current_reconstructed_frame)

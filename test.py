@@ -2,14 +2,15 @@ import numpy as np
 from lib.utils.misc import *
 import pathlib
 from matplotlib import pyplot as plt
+from lib.block_processing import intraframe_prediction
 
 width = 12
 height = 10
-i = 8
+i = 2
 block_size = i ** 2
 q = 1 # rgb or index
 offset = width // i
-qp = 6
+qp = 0
 
 a = np.arange(width*height*1).reshape(width, height, 1).repeat(3, 2)
 """
@@ -46,23 +47,7 @@ a[:, :, 0] = [
 
 b = a[:, :, 0]
 
-# q_matrix = quantization_matrix(i, qp)
-# frame1 = pathlib.Path.cwd().joinpath('output', 'original', '1').read_bytes()
-# frame_block = np.frombuffer(frame1, dtype=np.uint8).reshape(288,352)
-# frame1_block, _, _, _ = block_create(frame_block, i)
-# frame1a_block = frame1_block.astype(int)
-# for y in range(frame1a_block.shape[0]):
-#     for x in range(frame1a_block.shape[1]):
-#         frame1a_block[y, x] = dct2(frame1a_block[y, x])
-
-# frame12_block = frame_tc_to_qtc(frame1a_block, q_matrix)
-# frame13_block = frame_qtc_to_tc(frame12_block, q_matrix)
-# frame14_block = residual_coefficients_to_residual_frame(frame13_block, i, (288,352)).astype(np.uint8)
-# _, _, _, data = yuv2rgb(frame14_block)
-
-# plt.imshow(data, interpolation='nearest')
-# plt.show()
-
-frame1 = pathlib.Path.cwd().joinpath('output', 'residual', '1').read_bytes()
-frame_block = np.frombuffer(frame1, dtype=np.int16).reshape(288,352)
-print(frame_block.max())
+q_matrix = quantization_matrix(i, qp)
+index, frame, predictor_block_dump, qtc_block_dump, predictor_array = intraframe_prediction(0, b, i, q_matrix)
+print(predictor_array)
+print(predictor_block_dump)

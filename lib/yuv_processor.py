@@ -110,7 +110,7 @@ class YUVProcessor:
         self.__read_frames()
         self.info['frame_count'] = self.__frame_index
         paded_width, paded_height = get_padding(self.info['width'], self.info['height'], self.config['params']['i'])
-        pathlib.Path.cwd().joinpath(self.__config.get_output_path('main_folder'), self.__config.get_output_path('meta_file')).write_text(str("{},{},{},{},{}".format(self.__frame_index, paded_height, paded_width, self.config['params']['i'], self.config['params']['qp'])))
+        pathlib.Path.cwd().joinpath(self.__config.get_output_path('main_folder'), self.__config.get_output_path('meta_file')).write_text(str("{},{},{},{},{},{}".format(self.__frame_index, paded_height, paded_width, self.config['params']['i'], self.config['params']['qp'], self.config['params']['i_period'])))
 
         self.__mp.done()
         return

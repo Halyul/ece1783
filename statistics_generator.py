@@ -132,45 +132,23 @@ def residual_parallel_helper(original_path: pathlib.Path, residual_path: pathlib
 
     Parameters:
         total_frames (int): total number of frames
-        mv_path (Path): path to motion vectors
+        residual_path (Path): path to residual frames
         reconstructed_path (Path): path to reconstructed frames
-        params_i (int): i parameter
         output_path (Path): path to save pngs
         height (int): height of frame
         width (int): width of frame
 """
-def predicted_frame_parallel_helper(total_frames: int, mv_path: pathlib.Path, reconstructed_path: pathlib.Path, params_i: int, output_path: pathlib.Path, height: int, width: int) -> None:
+def predicted_frame_parallel_helper(total_frames: int, residual_path: pathlib.Path, reconstructed_path: pathlib.Path, output_path: pathlib.Path, height: int, width: int) -> None:
     for i in range(total_frames):
-        prev_index = i - 1
-        if prev_index == -1:
-            prev_frame = np.full(height*width, 128).reshape(height, width)
-        else:
-            prev_file = reconstructed_path.joinpath('{}'.format(prev_index))
-            prev_file_bytes = prev_file.read_bytes()
-            prev_frame_uint8 = np.frombuffer(prev_file_bytes, dtype=np.uint8).reshape(height, width)
-            prev_frame = np.array(prev_frame_uint8, dtype=np.int16)
-        
-        mv_file = mv_path.joinpath('{}'.format(i))
-        mv_file_lines = mv_file.read_text().split('\n')
-        mv_dump = []
-        mv_counter = 0
-        for line in mv_file_lines:
-            if line == '':
-                continue
-            min_motion_vector_y, min_motion_vector_x = line.split(' ')
-            min_motion_vector = (int(min_motion_vector_y), int(min_motion_vector_x))
-            if mv_counter == 0:
-                mv_dump.append([])
-            mv_dump[-1].append(min_motion_vector)
-            mv_counter += 1
-            if mv_counter == width // params_i:
-                mv_counter = 0
-    
-        current_reconstructed_frame = construct_predicted_frame(mv_dump, prev_frame, params_i)
-        current_reconstructed_frame = convert_within_range(current_reconstructed_frame)
+        residual_file = residual_path.joinpath(str(i)).read_bytes()
+        residual_frame = np.frombuffer(residual_file, dtype=np.int16).reshape(height, width)
+        reconstructed_file = reconstructed_path.joinpath(str(i)).read_bytes()
+        reconstructed_frame = np.frombuffer(reconstructed_file, dtype=np.uint8).reshape(height, width).astype(np.int16)
 
-        reconstructed_frame = Image.fromarray(current_reconstructed_frame)
-        reconstructed_frame.save(output_path.joinpath('{}.png'.format(i)))
+        predicted_frame = reconstructed_frame - residual_frame
+        predicted_frame = predicted_frame.astype(np.uint8)
+        predicted_frame = Image.fromarray(predicted_frame)
+        predicted_frame.save(output_path.joinpath('{}.png'.format(i)))
         print("predicted frame {} written".format(i))
 
 if __name__ == '__main__':
@@ -186,6 +164,7 @@ if __name__ == '__main__':
     params_i = config['params']['i']
     params_r = config['params']['r']
     params_qp = config['params']['qp']
+    params_i_period = config['params']['i_period']
 
     video_path = output_path.joinpath(video_name)
     video_path.mkdir(exist_ok=True)
@@ -195,20 +174,20 @@ if __name__ == '__main__':
     params_r_path.mkdir(exist_ok=True)
     params_qp_path = params_r_path.joinpath('qp_{}'.format(params_qp))
     params_qp_path.mkdir(exist_ok=True)
-    pngs_path = params_qp_path.joinpath('pngs')
+    params_i_period_path = params_qp_path.joinpath('i_period_{}'.format(params_i_period))
+    params_i_period_path.mkdir(exist_ok=True)
+    pngs_path = params_i_period_path.joinpath('pngs')
     pngs_path.mkdir(exist_ok=True)
-    residual_pngs_path = params_qp_path.joinpath('residual_pngs')
+    residual_pngs_path = params_i_period_path.joinpath('residual_pngs')
     residual_pngs_path.mkdir(exist_ok=True)
-    predicted_pngs_path = params_qp_path.joinpath('predicted_pngs')
+    predicted_pngs_path = params_i_period_path.joinpath('predicted_pngs')
     predicted_pngs_path.mkdir(exist_ok=True)
-    statistics_file = params_qp_path.joinpath('statistics.csv')
+    statistics_file = params_i_period_path.joinpath('statistics.csv')
 
     data_path = pathlib.Path.cwd().joinpath(config['output_path']['main_folder'])
-    mv_path = data_path.joinpath(config['output_path']['mv_folder'])
     original_path = data_path.joinpath(config['output_path']['original_folder'])
     reconstructed_path = data_path.joinpath(config['output_path']['reconstructed_folder'])
     residual_path = data_path.joinpath(config['output_path']['residual_folder'])
-    mv_path = data_path.joinpath(config['output_path']['mv_folder'])
     meta_file = data_path.joinpath(config['output_path']['meta_file'])
     mae_file = data_path.joinpath(config['output_path']['mae_file'])
 
@@ -235,9 +214,8 @@ if __name__ == '__main__':
 
     predicted_job = pool.apply_async(func=predicted_frame_parallel_helper, args=(
         total_frames,
-        mv_path,
+        residual_path,
         reconstructed_path,
-        params_i,
         predicted_pngs_path,
         height,
         width,
@@ -275,22 +253,22 @@ if __name__ == '__main__':
     plt.plot(array[:, 0], array[:, 1])
     plt.xlabel('frame index')
     plt.ylabel('mae')
-    plt.title('mae for {}\ni={}, r={}, qp={}\nh={}, w={}'.format(video_name, params_i, params_r, params_qp, height, width))
-    plt.savefig(params_qp_path.joinpath('mae.png'))
+    plt.title('i={}, r={}, qp={}, i_period={}\n{}, h={}, w={}'.format(params_i, params_r, params_qp, params_i_period, video_name, height, width))
+    plt.savefig(params_i_period_path.joinpath('mae.png'))
     plt.clf()
 
     plt.plot(array[:, 0], array[:, 2])
     plt.xlabel('frame index')
     plt.ylabel('psnr')
-    plt.title('psnr for {}\ni={}, r={}, qp={}\nh={}, w={}'.format(video_name, params_i, params_r, params_qp, height, width))
-    plt.savefig(params_qp_path.joinpath('psnr.png'))
+    plt.title('i={}, r={}, qp={}, i_period={}\n{}, h={}, w={}'.format(params_i, params_r, params_qp, params_i_period, video_name, height, width))
+    plt.savefig(params_i_period_path.joinpath('psnr.png'))
     plt.clf()
 
     plt.plot(array[:, 0], array[:, 3])
     plt.xlabel('frame index')
     plt.ylabel('ssim')
-    plt.title('ssim for {}\ni={}, r={}, qp={}\nh={}, w={}'.format(video_name, params_i, params_r, params_qp, height, width))
-    plt.savefig(params_qp_path.joinpath('ssim.png'))
+    plt.title('i={}, r={}, qp={}, i_period={}\n{}, h={}, w={}'.format(params_i, params_r, params_qp, params_i_period, video_name, height, width))
+    plt.savefig(params_i_period_path.joinpath('ssim.png'))
     plt.clf()
 
     for job in residual_jobs:
