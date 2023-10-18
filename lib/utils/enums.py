@@ -13,3 +13,7 @@ class Identifier(Enum):
 class Intraframe(Enum):
     HORIZONTAL = 1
     VERTICAL = 0
+
+class TypeMarker(Enum):
+    I_FRAME = 1
+    P_FRAME = 0

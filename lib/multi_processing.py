@@ -7,6 +7,8 @@ from typing import Callable as function
 from lib.block_processing import calc_motion_vector_parallel_helper
 from lib.utils.config import Config
 from lib.utils.quantization import quantization_matrix
+from lib.utils.entropy import reording_encoding, rle_encoding, exp_golomb_encoding
+from lib.utils.enums import TypeMarker
 
 class MultiProcessingNew:
     def __init__(self, config) -> None:
@@ -153,22 +155,31 @@ def write_data_dispatcher(q: mp.Queue, config_class: Config) -> None:
         data = q.get()
         if data == 'kill':
             break
-        frame_index, mv_dump, residual_frame, average_mae = data
+        frame_index, mv_dump, qtc_dump, average_mae = data
 
         mv_dump_text = ''
         is_intraframe = mv_dump[0]
+        if is_intraframe:
+            mv_dump_text += '{}\n'.format(TypeMarker.I_FRAME.value)
+        else:
+            mv_dump_text += '{}\n'.format(TypeMarker.P_FRAME.value)
         for object in mv_dump[1]:
             for item in object:
                 min_motion_vector = item
                 if is_intraframe:
-                    mv_dump_text += '{}\n'.format(min_motion_vector)
+                    mv_dump_text += '{}\n'.format(exp_golomb_encoding(min_motion_vector))
                 else:
-                    mv_dump_text += '{} {}\n'.format(min_motion_vector[0], min_motion_vector[1])
+                    mv_dump_text += '{} {}\n'.format(exp_golomb_encoding(min_motion_vector[0]), exp_golomb_encoding(min_motion_vector[1]))
 
-        pathlib.Path.cwd().joinpath(config_class.get_output_path('main_folder'), config_class.get_output_path('mv_folder'), '{}'.format(frame_index)).write_text(str(mv_dump_text))
+        qtc_dump_text = ''
+        for object in qtc_dump:
+            for item in object:
+                qtc_dump_text += ' '.join(exp_golomb_encoding(x) for x in rle_encoding(reording_encoding(item)))
+                qtc_dump_text += '\n'
 
-        residual_frame = np.array(residual_frame, dtype=np.int16)
-        pathlib.Path.cwd().joinpath(config_class.get_output_path('main_folder'), config_class.get_output_path('residual_folder'), '{}'.format(frame_index)).write_bytes(residual_frame)
+        pathlib.Path.cwd().joinpath(config_class.get_output_path('main_folder'), config_class.get_output_path('mv_folder'), '{}'.format(frame_index)).write_text(mv_dump_text)
+
+        pathlib.Path.cwd().joinpath(config_class.get_output_path('main_folder'), config_class.get_output_path('residual_folder'), '{}'.format(frame_index)).write_text(qtc_dump_text)
 
         with pathlib.Path.cwd().joinpath(config_class.get_output_path('main_folder'), config_class.get_output_path('mae_file')).open('a') as f:
             f.write("{} {}\n".format(frame_index, average_mae))

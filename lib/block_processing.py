@@ -239,5 +239,5 @@ def calc_motion_vector_parallel_helper(frame: np.ndarray, frame_index: int, prev
 
     reconstructed_path.joinpath('{}'.format(frame_index)).write_bytes(current_reconstructed_frame)
     
-    write_data_q.put((frame_index, (is_intraframe, mv_dump), pixel_create(np.array(qtc_block_dump), frame.shape, params_i), average_mae))
+    write_data_q.put((frame_index, (is_intraframe, mv_dump), qtc_block_dump, average_mae))
     print('Frame {} done'.format(frame_index))

@@ -47,7 +47,3 @@ a[:, :, 0] = [
 
 b = a[:, :, 0]
 
-q_matrix = quantization_matrix(i, qp)
-index, frame, predictor_block_dump, qtc_block_dump, predictor_array = intraframe_prediction(0, b, i, q_matrix)
-print(predictor_array)
-print(predictor_block_dump)

@@ -3,6 +3,7 @@ from lib.utils.config import Config
 from lib.signal_processing import psnr, ssim
 from lib.utils.misc import block_create
 from lib.utils.quantization import quantization_matrix, frame_qtc_to_tc, residual_coefficients_to_residual_frame
+from lib.utils.entropy import exp_golomb_decoding, reording_decoding, rle_decoding
 import matplotlib.pyplot as plt
 import pathlib
 from PIL import Image
@@ -101,12 +102,25 @@ def frame_parallel_helper(original_path: pathlib.Path, reconstructed_path: pathl
 def residual_parallel_helper(original_path: pathlib.Path, residual_path: pathlib.Path, i: int, height: int, width: int, residual_pngs_path: pathlib.Path, params_i: int, q_matrix: np.ndarray) -> None:
     current_file = original_path.joinpath(str(i)).read_bytes()
     prev_file = original_path.joinpath(str(i - 1)).read_bytes()
-    generated_residual_file = residual_path.joinpath(str(i)).read_bytes()
+    qtc_file_lines = residual_path.joinpath(str(i)).read_text().split('\n')
 
     current_frame = np.frombuffer(current_file, dtype=np.uint8).reshape(height, width).astype(np.int16)
     prev_frame = np.frombuffer(prev_file, dtype=np.uint8).reshape(height, width).astype(np.int16)
-    generated_residual_frame_np_array = np.frombuffer(generated_residual_file, dtype=np.int16).reshape(height, width)
-    residual_frame_qtc, _, _, _ = block_create(generated_residual_frame_np_array, params_i)
+
+    qtc_dump = []
+    qtc_counter = 0
+    for line in qtc_file_lines:
+        if line == '':
+            continue
+        qtc = reording_decoding(rle_decoding(([exp_golomb_decoding(x) for x in line.split(' ')]), q_matrix.shape), q_matrix.shape)
+        if qtc_counter == 0:
+            qtc_dump.append([])
+        qtc_dump[-1].append(qtc)
+        qtc_counter += 1
+        if qtc_counter == width // params_i:
+            qtc_counter = 0
+
+    residual_frame_qtc = np.array(qtc_dump, dtype=np.int16)
     residual_frame_coefficients = frame_qtc_to_tc(residual_frame_qtc, q_matrix)
     generated_residual_frame = residual_coefficients_to_residual_frame(residual_frame_coefficients, params_i, (height, width)).astype(np.int16)
 
@@ -138,11 +152,29 @@ def residual_parallel_helper(original_path: pathlib.Path, residual_path: pathlib
         output_path (Path): path to save pngs
         height (int): height of frame
         width (int): width of frame
+        params_i (int): block size parameter
+        q_matrix (np.ndarray): quantization matrix
 """
-def predicted_frame_parallel_helper(total_frames: int, residual_path: pathlib.Path, reconstructed_path: pathlib.Path, output_path: pathlib.Path, height: int, width: int) -> None:
+def predicted_frame_parallel_helper(total_frames: int, residual_path: pathlib.Path, reconstructed_path: pathlib.Path, output_path: pathlib.Path, height: int, width: int, params_i: int, q_matrix: np.ndarray) -> None:
     for i in range(total_frames):
-        residual_file = residual_path.joinpath(str(i)).read_bytes()
-        residual_frame = np.frombuffer(residual_file, dtype=np.int16).reshape(height, width)
+        qtc_file_lines = residual_path.joinpath(str(i)).read_text().split('\n')
+        qtc_dump = []
+        qtc_counter = 0
+        for line in qtc_file_lines:
+            if line == '':
+                continue
+            qtc = reording_decoding(rle_decoding(([exp_golomb_decoding(x) for x in line.split(' ')]), q_matrix.shape), q_matrix.shape)
+            if qtc_counter == 0:
+                qtc_dump.append([])
+            qtc_dump[-1].append(qtc)
+            qtc_counter += 1
+            if qtc_counter == width // params_i:
+                qtc_counter = 0
+
+        residual_frame_qtc = np.array(qtc_dump, dtype=np.int16)
+        residual_frame_coefficients = frame_qtc_to_tc(residual_frame_qtc, q_matrix)
+        residual_frame = residual_coefficients_to_residual_frame(residual_frame_coefficients, params_i, (height, width)).astype(np.int16)
+
         reconstructed_file = reconstructed_path.joinpath(str(i)).read_bytes()
         reconstructed_frame = np.frombuffer(reconstructed_file, dtype=np.uint8).reshape(height, width).astype(np.int16)
 
@@ -220,6 +252,8 @@ if __name__ == '__main__':
         predicted_pngs_path,
         height,
         width,
+        params_i,
+        q_matrix,
     ))
 
     mae_list = mae_file.read_text().split('\n')
