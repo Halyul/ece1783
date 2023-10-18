@@ -2,7 +2,7 @@ import numpy as np
 from lib.utils.misc import *
 import pathlib
 from matplotlib import pyplot as plt
-from lib.block_processing import intraframe_prediction
+from lib.utils.entropy import *
 
 width = 12
 height = 10
@@ -47,3 +47,4 @@ a[:, :, 0] = [
 
 b = a[:, :, 0]
 
+print(array_exp_golomb_decoding("001001101101101011000100100101"))

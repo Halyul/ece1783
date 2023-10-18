@@ -3,7 +3,7 @@ from lib.utils.config import Config
 from lib.utils.misc import construct_reconstructed_frame, convert_within_range
 from lib.utils.quantization import quantization_matrix, frame_qtc_to_tc, residual_coefficients_to_residual_frame
 from lib.utils.differential import frame_differential_decoding
-from lib.utils.entropy import exp_golomb_decoding, reording_decoding, rle_decoding
+from lib.utils.entropy import exp_golomb_decoding, reording_decoding, rle_decoding, array_exp_golomb_decoding
 from lib.utils.enums import TypeMarker
 import pathlib
 import numpy as np
@@ -28,28 +28,33 @@ q_matrix = quantization_matrix(params_i, params_qp)
 
 for i in range(total_frames):
     mv_file = mv_path.joinpath('{}'.format(i))
-    mv_file_lines = mv_file.read_text().split('\n')
+    mv_file_lines = mv_file.read_text()
     mv_dump = []
     mv_counter = 0
-    type_marker = int(mv_file_lines.pop(0))
+    type_marker = int(mv_file_lines[0])
+    mv_file_lines = mv_file_lines[1:]
     if type_marker == TypeMarker.I_FRAME.value:
         is_intraframe = True
     else:
         is_intraframe = False
-    for line in mv_file_lines:
-        if line == '':
-            continue
-        if is_intraframe:
-            min_motion_vector = exp_golomb_decoding(line)
-        else:
-            min_motion_vector_y, min_motion_vector_x = line.split(' ')
-            min_motion_vector = (exp_golomb_decoding(min_motion_vector_y), exp_golomb_decoding(min_motion_vector_x))
-        if mv_counter == 0:
-            mv_dump.append([])
-        mv_dump[-1].append(min_motion_vector)
-        mv_counter += 1
-        if mv_counter == width // params_i:
-            mv_counter = 0
+    mv_single_array = array_exp_golomb_decoding(mv_file_lines)
+    if is_intraframe:
+        for item in mv_single_array:
+            if mv_counter == 0:
+                mv_dump.append([])
+            mv_dump[-1].append(item)
+            mv_counter += 1
+            if mv_counter == width // params_i:
+                mv_counter = 0
+    else:
+        for j in range(0, len(mv_single_array), 2):
+            min_motion_vector = (mv_single_array[j], mv_single_array[j+1])
+            if mv_counter == 0:
+                mv_dump.append([])
+            mv_dump[-1].append(min_motion_vector)
+            mv_counter += 1
+            if mv_counter == width // params_i:
+                mv_counter = 0
 
     if is_intraframe:
         prev_frame = None

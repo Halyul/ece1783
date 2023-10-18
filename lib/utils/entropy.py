@@ -38,16 +38,29 @@ def exp_golomb_decoding(number: str) -> int:
     else:
         return (number + 1) // 2
 
+def array_exp_golomb_decoding(number: str) -> list:
+    numbers = []
+    counter = 0
+    pending = ''
+    while len(number) > 0:
+        current = number[0]
+        number = number[1:]
+        pending += current
+        if current == '0':
+            counter += 1
+        else:
+            for _ in range(counter):
+                pending += number[0]
+                number = number[1:]
+            numbers.append(exp_golomb_decoding(pending))
+            pending = ''
+            counter = 0
+    return numbers
+
 def array_exp_golomb_encoding(array: list) -> list:
     new_array = []
     for item in array:
         new_array.append(exp_golomb_encoding(item))
-    return new_array
-
-def array_exp_golomb_decoding(array: list) -> list:
-    new_array = []
-    for item in array:
-        new_array.append(exp_golomb_decoding(item))
     return new_array
 
 """

@@ -160,16 +160,16 @@ def write_data_dispatcher(q: mp.Queue, config_class: Config) -> None:
         mv_dump_text = ''
         is_intraframe = mv_dump[0]
         if is_intraframe:
-            mv_dump_text += '{}\n'.format(TypeMarker.I_FRAME.value)
+            mv_dump_text += '{}'.format(TypeMarker.I_FRAME.value)
         else:
-            mv_dump_text += '{}\n'.format(TypeMarker.P_FRAME.value)
+            mv_dump_text += '{}'.format(TypeMarker.P_FRAME.value)
         for object in mv_dump[1]:
             for item in object:
                 min_motion_vector = item
                 if is_intraframe:
-                    mv_dump_text += '{}\n'.format(exp_golomb_encoding(min_motion_vector))
+                    mv_dump_text += '{}'.format(exp_golomb_encoding(min_motion_vector))
                 else:
-                    mv_dump_text += '{} {}\n'.format(exp_golomb_encoding(min_motion_vector[0]), exp_golomb_encoding(min_motion_vector[1]))
+                    mv_dump_text += '{}{}'.format(exp_golomb_encoding(min_motion_vector[0]), exp_golomb_encoding(min_motion_vector[1]))
 
         qtc_dump_text = ''
         for object in qtc_dump:
