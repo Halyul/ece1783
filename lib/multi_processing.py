@@ -6,7 +6,7 @@ import time
 from typing import Callable as function
 from lib.block_processing import calc_motion_vector_parallel_helper
 from lib.utils.config import Config
-from lib.utils.misc import quantization_matrix
+from lib.utils.quantization import quantization_matrix
 
 class MultiProcessingNew:
     def __init__(self, config) -> None:
