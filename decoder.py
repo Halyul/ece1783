@@ -2,6 +2,7 @@
 from lib.utils.config import Config
 from lib.utils.misc import block_create, construct_reconstructed_frame, convert_within_range
 from lib.utils.quantization import quantization_matrix, frame_qtc_to_tc, residual_coefficients_to_residual_frame
+from lib.utils.differential import frame_differential_decoding
 import pathlib
 import numpy as np
 
@@ -63,7 +64,7 @@ for i in range(total_frames):
         mv_counter += 1
         if mv_counter == width // params_i:
             mv_counter = 0
-    
+    mv_dump = frame_differential_decoding(mv_dump, is_intraframe)
     current_reconstructed_frame = construct_reconstructed_frame(mv_dump, prev_frame, residual_frame, params_i)
     current_reconstructed_frame = convert_within_range(current_reconstructed_frame)
 

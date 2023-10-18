@@ -4,6 +4,7 @@ from pathlib import Path
 from lib.utils.misc import block_create, convert_within_range, extend_block, pixel_create
 from lib.utils.enums import Intraframe
 from lib.utils.quantization import get_qtc_and_reconstructed_block
+from lib.utils.differential import frame_differential_encoding
 
 """
     Calculate the motion vector for a block from the search window.
@@ -233,6 +234,7 @@ def calc_motion_vector_parallel_helper(frame: np.ndarray, frame_index: int, prev
         current_reconstructed_frame = pixel_create(np.array(reconstructed_block_dump), frame.shape, params_i)
     
     average_mae = np.array(mae_dump).mean().astype(int)
+    mv_dump = frame_differential_encoding(mv_dump, is_intraframe)
     current_reconstructed_frame = convert_within_range(current_reconstructed_frame)
 
     reconstructed_path.joinpath('{}'.format(frame_index)).write_bytes(current_reconstructed_frame)

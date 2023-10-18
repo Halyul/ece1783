@@ -155,6 +155,18 @@ def frame_tc_to_qtc(frame_tc: np.ndarray, q_matrix: np.ndarray) -> np.ndarray:
             new_array[y, x] = tc_to_qtc(frame_tc[y, x], q_matrix)
     return new_array
 
+"""
+    Get QTC and reconstructed block from current block and predicted block.
+
+    Parameters:
+        current_block (np.ndarray): The current block.
+        predicted_block (np.ndarray): The predicted block.
+        q_matrix (np.ndarray): The quantization matrix.
+    
+    Returns:
+        (np.ndarray): The QTC.
+        (np.ndarray): The reconstructed block.
+"""
 def get_qtc_and_reconstructed_block(current_block, predicted_block, q_matrix):
     residual_block = current_block - predicted_block
     residual_block_transformed = dct2(residual_block).astype(int)
