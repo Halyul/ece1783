@@ -69,20 +69,22 @@ for i in range(total_frames):
             prev_frame = np.array(prev_frame_uint8, dtype=np.int16)
 
     qtc_file = residual_path.joinpath('{}'.format(i))
-    qtc_file_lines = qtc_file.read_text().split('\n')
+    qtc_file_lines = qtc_file.read_text()
 
     qtc_dump = []
     qtc_counter = 0
-    for line in qtc_file_lines:
-        if line == '':
-            continue
-        qtc = reording_decoding(rle_decoding(([exp_golomb_decoding(x) for x in line.split(' ')]), q_matrix.shape), q_matrix.shape)
-        if qtc_counter == 0:
-            qtc_dump.append([])
-        qtc_dump[-1].append(qtc)
-        qtc_counter += 1
-        if qtc_counter == width // params_i:
-            qtc_counter = 0
+    qtc_single_array = array_exp_golomb_decoding(qtc_file_lines)
+    qtc_pending = []
+    for item in qtc_single_array:
+        qtc_pending.append(item)
+        if item == 0:
+            if qtc_counter == 0:
+                qtc_dump.append([])
+            qtc_dump[-1].append(reording_decoding(rle_decoding(qtc_pending, q_matrix.shape), q_matrix.shape))
+            qtc_pending = []
+            qtc_counter += 1
+            if qtc_counter == width // params_i:
+                qtc_counter = 0
 
     residual_frame_qtc = np.array(qtc_dump, dtype=np.int16)
     residual_frame_coefficients = frame_qtc_to_tc(residual_frame_qtc, q_matrix)

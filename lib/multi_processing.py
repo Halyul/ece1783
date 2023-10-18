@@ -174,8 +174,7 @@ def write_data_dispatcher(q: mp.Queue, config_class: Config) -> None:
         qtc_dump_text = ''
         for object in qtc_dump:
             for item in object:
-                qtc_dump_text += ' '.join(exp_golomb_encoding(x) for x in rle_encoding(reording_encoding(item)))
-                qtc_dump_text += '\n'
+                qtc_dump_text += ''.join(exp_golomb_encoding(x) for x in rle_encoding(reording_encoding(item)))
 
         pathlib.Path.cwd().joinpath(config_class.get_output_path('main_folder'), config_class.get_output_path('mv_folder'), '{}'.format(frame_index)).write_text(mv_dump_text)
 
