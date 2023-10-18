@@ -65,6 +65,53 @@ def calc_motion_vector(block: np.ndarray, block_coor: tuple, search_window: np.n
 
     return min_mae, min_motion_vector, min_block
 
+def intraframe_parallel_helper(index: int, frame: np.ndarray, params_i: int, params_r: int, q_matrix: np.ndarray, prev_frame: np.ndarray, y: int) -> tuple:
+    # reconstruct one block, use reconstructed value for next block
+    pass
+
+def intraframe_prediction(reconstructed_frame: np.ndarray, params_i: int):
+    height, width = reconstructed_frame.shape
+    block_frame = block_create(reconstructed_frame, params_i)[0].astype(int)
+    predictor_array = []
+    y_counter = 0
+    x_counter = 0
+    for y in range(0, height, params_i):
+        predictor_array.append([])
+        for x in range(0, width, params_i):
+            current_coor = (y, x)
+            current_block = block_frame[y_counter, x_counter]
+            hor_top_left, _ = extend_block(current_coor, params_i, (0, 0, 0, 1), (height, width))
+            ver_top_left, _ = extend_block(current_coor, params_i, (1, 0, 0, 0), (height, width))
+            
+            if hor_top_left[1] == current_coor[1]:
+                hor_block = np.full((params_i, 1), 128)
+            else:
+                hor_block = reconstructed_frame[hor_top_left[0]:hor_top_left[0] + params_i, hor_top_left[1]:hor_top_left[1] + 1]
+            hor_block = hor_block.repeat(2, 1)
+            hor_mae = np.abs(hor_block - current_block).mean().astype(int)
+
+            if ver_top_left[0] == current_coor[0]:
+                ver_block = np.full((1, params_i), 128)
+            else:
+                ver_block = reconstructed_frame[ver_top_left[0]:ver_top_left[0] + 1, ver_top_left[1]:ver_top_left[1] + params_i]
+            ver_block = ver_block.repeat(2, 0)
+            ver_mae = np.abs(ver_block - current_block).mean().astype(int)
+
+            predictor_block = None
+            if ver_mae < hor_mae:
+                predictor_array[y_counter].append(1)
+                predictor_block = ver_block
+            else:
+                predictor_array[y_counter].append(0)
+                predictor_block = hor_block
+
+            # for j in range(params_i):
+            #     for i in range(params_i):
+            #         reconstructed_frame[y + j, x + i] = predictor_block[j, i]
+            x_counter += 1
+        y_counter += 1
+    return reconstructed_frame
+
 """
     Helper function to calculate the motion vector, residual blocks, and mae values.
 
@@ -76,11 +123,19 @@ def calc_motion_vector(block: np.ndarray, block_coor: tuple, search_window: np.n
         q_matrix (np.ndarray): The quantization matrix.
         prev_frame (np.ndarray): The previous frame.
         y (int): The y coordinate of the block.
+
+    Returns:
+        index (int): The index of the frame.
+        qtc_block_dump (np.ndarray): The quantized transformed coefficients.
+        mv_dump (list): The motion vectors.
+        mae_dump (list): The mean absolute errors.
+        reconstructed_block_dump (np.ndarray): The reconstructed blocks.
 """
-def parallel_helper(index: int, frame: np.ndarray, params_i: int, params_r: int, q_matrix: np.ndarray, prev_frame: np.ndarray, y: int) -> tuple:
-    residual_block_dump = []
+def mv_parallel_helper(index: int, frame: np.ndarray, params_i: int, params_r: int, q_matrix: np.ndarray, prev_frame: np.ndarray, y: int) -> tuple:
+    qtc_block_dump = []
     mv_dump = []
     mae_dump = []
+    reconstructed_block_dump = []
     for x in range(0, frame.shape[1], params_i):
         centered_top_left = (y, x)
         centered_block = frame[centered_top_left[0]:centered_top_left[0] + params_i, centered_top_left[1]:centered_top_left[1] + params_i]
@@ -90,14 +145,14 @@ def parallel_helper(index: int, frame: np.ndarray, params_i: int, params_r: int,
         search_window = prev_frame[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
 
         min_mae, min_motion_vector, min_block = calc_motion_vector(centered_block, centered_top_left, search_window, top_left, params_i)
+
+        qtc_dump, reconstructed_block = get_qtc_and_reconstructed_block(centered_block, min_block, q_matrix)
+        qtc_block_dump.append(qtc_dump)
+        reconstructed_block_dump.append(reconstructed_block)
+
         mv_dump.append(min_motion_vector)
         mae_dump.append(min_mae)
-
-        residual_block = centered_block - min_block
-        residual_block_transformed = dct2(residual_block).astype(int)
-        qtc_dump = tc_to_qtc(residual_block_transformed, q_matrix)
-        residual_block_dump.append(qtc_dump)
-    return (index, residual_block_dump, mv_dump, mae_dump)
+    return (index, qtc_block_dump, mv_dump, mae_dump, reconstructed_block_dump)
 
 """
     Calculate the motion vector for a block from the search window in parallel.
@@ -109,12 +164,13 @@ def parallel_helper(index: int, frame: np.ndarray, params_i: int, params_r: int,
         prev_index (int): The previous frame index.
         params_i (int): The block size.
         params_r (int): The search window size.
+        is_intraframe (bool): Whether the current frame is an intraframe.
         q_matrix (np.ndarray): The quantization matrix.
         write_data_q (Queue): The queue to write data to.
         reconstructed_path (Path): The path to write the reconstructed frame to.
         pool (Pool): The pool of processes.
 """
-def calc_motion_vector_parallel_helper(frame: np.ndarray, frame_index: int, prev_frame: np.ndarray, prev_index: int, params_i: int, params_r: int, q_matrix: np.ndarray, write_data_q: Queue, reconstructed_path: Path, pool: Pool) -> None:
+def calc_motion_vector_parallel_helper(frame: np.ndarray, frame_index: int, prev_frame: np.ndarray, prev_index: int, params_i: int, params_r: int, is_intraframe: bool, q_matrix: np.ndarray, write_data_q: Queue, reconstructed_path: Path, pool: Pool) -> None:
     print("Dispatched", frame_index)
     if prev_index + 1 != frame_index:
         raise Exception('Frame index mismatch. Current: {}, Previous: {}'.format(frame_index, prev_index))
@@ -123,7 +179,7 @@ def calc_motion_vector_parallel_helper(frame: np.ndarray, frame_index: int, prev
     results = []
     counter = 0
     for y in range(0, frame.shape[0], params_i):
-        job = pool.apply_async(func=parallel_helper, args=(
+        job = pool.apply_async(func=mv_parallel_helper, args=(
             counter,
             frame, 
             params_i, 
@@ -138,25 +194,23 @@ def calc_motion_vector_parallel_helper(frame: np.ndarray, frame_index: int, prev
     for job in jobs:
         results.append(job.get())
     
+    results.sort(key=lambda x: x[0])
+    qtc_block_dump = [None] * len(results)
     mv_dump = [None] * len(results)
-    qtc_block_dump = [None] * len(results) 
     mae_dump = [None] * len(results)
+    reconstructed_block_dump = [None] * len(results)
     for result in results:
         index = result[0]
         qtc_block_dump[index] = result[1]
         mv_dump[index] = result[2]
         mae_dump[index] = result[3]
+        reconstructed_block_dump[index] = result[4]
     
-    qtc_block_dump = np.array(qtc_block_dump)
-    residual_block_dump = frame_qtc_to_tc(qtc_block_dump, q_matrix)
-    predicted_frame = construct_predicted_frame(mv_dump, prev_frame, params_i)
-    residual_frame = residual_coefficients_to_residual_frame(residual_block_dump, params_i, frame.shape)
     average_mae = np.array(mae_dump).mean().astype(int)
-
-    current_reconstructed_frame = predicted_frame + residual_frame
+    current_reconstructed_frame = pixel_create(np.array(reconstructed_block_dump), frame.shape, params_i)
     current_reconstructed_frame = convert_within_range(current_reconstructed_frame)
-    
+
     reconstructed_path.joinpath('{}'.format(frame_index)).write_bytes(current_reconstructed_frame)
     
-    write_data_q.put((frame_index, mv_dump, pixel_create(qtc_block_dump, frame.shape, params_i), average_mae))
+    write_data_q.put((frame_index, mv_dump, pixel_create(np.array(qtc_block_dump), frame.shape, params_i), average_mae))
     print('Frame {} done'.format(frame_index))

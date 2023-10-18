@@ -335,3 +335,13 @@ def extend_block(original_top_left: tuple, params_i: int, margin: tuple, shape: 
         bottom_right = (bottom_right[0], max_width)
     
     return top_left, bottom_right
+
+def get_qtc_and_reconstructed_block(current_block, predicted_block, q_matrix):
+    residual_block = current_block - predicted_block
+    residual_block_transformed = dct2(residual_block).astype(int)
+    qtc_dump = tc_to_qtc(residual_block_transformed, q_matrix)
+
+    residual_block_transformed = qtc_to_tc(qtc_dump, q_matrix)
+    residual_block = idct2(residual_block_transformed).astype(int)
+    reconstructed_block = predicted_block + residual_block
+    return qtc_dump, reconstructed_block
