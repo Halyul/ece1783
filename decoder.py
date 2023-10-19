@@ -8,6 +8,9 @@ from lib.utils.enums import TypeMarker
 from lib.utils.misc import bytes_to_binstr
 import pathlib
 import numpy as np
+import time
+
+start = time.time()
 
 config_class = Config('config.yaml')
 config = config_class.config
@@ -99,3 +102,6 @@ for i in range(total_frames):
 
     output_path.joinpath('{}'.format(i)).write_bytes(current_reconstructed_frame)
     print("reconstructed frame {} written".format(i))
+
+end = time.time()
+print('Time: {}s'.format(end - start))

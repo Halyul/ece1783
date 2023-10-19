@@ -294,7 +294,6 @@ if __name__ == '__main__':
 
     results.sort(key=lambda x: x[0])
     array = np.array(results)
-    np.savetxt(statistics_file, array, delimiter=',', header='frame_index,mae,psnr,ssim', comments='')
 
     plt.plot(array[:, 0], array[:, 1])
     plt.xlabel('frame index')
@@ -342,6 +341,8 @@ if __name__ == '__main__':
     plt.title('i={}, r={}, qp={}, i_period={}\n{}'.format(params_i, params_r, params_qp, params_i_period, video_name))
     plt.savefig(params_i_period_path.joinpath('bit-count_psnr_discrete.png'))
     plt.clf()
+
+    np.savetxt(statistics_file, np.column_stack((array, size_array)), delimiter=',', header='frame_index,mae,psnr,ssim,mv_qtc_size', comments='')
 
     # for job in residual_jobs:
     #     job.get()
