@@ -11,11 +11,11 @@ output_path:
   mae_file: mae.txt
   uv_folder: uv
 params:
-  i: 2 # 2, 8, 64
-  r: 1 # 1, 4, 8
-  stop_at: -1 # stop after processing how many frames, -1 to disable
-  qp: 1
-  i_period: 5
+  i: 8 # 2, 8, 64
+  r: 2 # 1, 4, 8
+  stop_at: 10 # stop after processing how many frames, -1 to disable
+  qp: 3
+  i_period: 4
 
 statistics:
   path: statistics
