@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 from lib.utils.config import Config
 from lib.signal_processing import psnr, ssim
-from lib.utils.misc import block_create
 from lib.utils.quantization import quantization_matrix, frame_qtc_to_tc, residual_coefficients_to_residual_frame
-from lib.utils.entropy import exp_golomb_decoding, reording_decoding, rle_decoding
+from lib.utils.misc import bytes_to_binstr
+from lib.utils.entropy import exp_golomb_decoding, reording_decoding, rle_decoding, array_exp_golomb_decoding
 import matplotlib.pyplot as plt
 import pathlib
 from PIL import Image
@@ -102,23 +102,28 @@ def frame_parallel_helper(original_path: pathlib.Path, reconstructed_path: pathl
 def residual_parallel_helper(original_path: pathlib.Path, residual_path: pathlib.Path, i: int, height: int, width: int, residual_pngs_path: pathlib.Path, params_i: int, q_matrix: np.ndarray) -> None:
     current_file = original_path.joinpath(str(i)).read_bytes()
     prev_file = original_path.joinpath(str(i - 1)).read_bytes()
-    qtc_file_lines = residual_path.joinpath(str(i)).read_text().split('\n')
+    qtc_file = residual_path.joinpath('{}'.format(i))
 
     current_frame = np.frombuffer(current_file, dtype=np.uint8).reshape(height, width).astype(np.int16)
     prev_frame = np.frombuffer(prev_file, dtype=np.uint8).reshape(height, width).astype(np.int16)
 
+    qtc_file_lines = qtc_file.read_bytes()
+    qtc_file_lines = bytes_to_binstr(qtc_file_lines)
+
     qtc_dump = []
     qtc_counter = 0
-    for line in qtc_file_lines:
-        if line == '':
-            continue
-        qtc = reording_decoding(rle_decoding(([exp_golomb_decoding(x) for x in line.split(' ')]), q_matrix.shape), q_matrix.shape)
-        if qtc_counter == 0:
-            qtc_dump.append([])
-        qtc_dump[-1].append(qtc)
-        qtc_counter += 1
-        if qtc_counter == width // params_i:
-            qtc_counter = 0
+    qtc_single_array = array_exp_golomb_decoding(qtc_file_lines)
+    qtc_pending = []
+    for item in qtc_single_array:
+        qtc_pending.append(item)
+        if item == 0:
+            if qtc_counter == 0:
+                qtc_dump.append([])
+            qtc_dump[-1].append(reording_decoding(rle_decoding(qtc_pending, q_matrix.shape), q_matrix.shape))
+            qtc_pending = []
+            qtc_counter += 1
+            if qtc_counter == width // params_i:
+                qtc_counter = 0
 
     residual_frame_qtc = np.array(qtc_dump, dtype=np.int16)
     residual_frame_coefficients = frame_qtc_to_tc(residual_frame_qtc, q_matrix)
@@ -157,19 +162,24 @@ def residual_parallel_helper(original_path: pathlib.Path, residual_path: pathlib
 """
 def predicted_frame_parallel_helper(total_frames: int, residual_path: pathlib.Path, reconstructed_path: pathlib.Path, output_path: pathlib.Path, height: int, width: int, params_i: int, q_matrix: np.ndarray) -> None:
     for i in range(total_frames):
-        qtc_file_lines = residual_path.joinpath(str(i)).read_text().split('\n')
+        qtc_file = residual_path.joinpath('{}'.format(i))
+        qtc_file_lines = qtc_file.read_bytes()
+        qtc_file_lines = bytes_to_binstr(qtc_file_lines)
+
         qtc_dump = []
         qtc_counter = 0
-        for line in qtc_file_lines:
-            if line == '':
-                continue
-            qtc = reording_decoding(rle_decoding(([exp_golomb_decoding(x) for x in line.split(' ')]), q_matrix.shape), q_matrix.shape)
-            if qtc_counter == 0:
-                qtc_dump.append([])
-            qtc_dump[-1].append(qtc)
-            qtc_counter += 1
-            if qtc_counter == width // params_i:
-                qtc_counter = 0
+        qtc_single_array = array_exp_golomb_decoding(qtc_file_lines)
+        qtc_pending = []
+        for item in qtc_single_array:
+            qtc_pending.append(item)
+            if item == 0:
+                if qtc_counter == 0:
+                    qtc_dump.append([])
+                qtc_dump[-1].append(reording_decoding(rle_decoding(qtc_pending, q_matrix.shape), q_matrix.shape))
+                qtc_pending = []
+                qtc_counter += 1
+                if qtc_counter == width // params_i:
+                    qtc_counter = 0
 
         residual_frame_qtc = np.array(qtc_dump, dtype=np.int16)
         residual_frame_coefficients = frame_qtc_to_tc(residual_frame_qtc, q_matrix)

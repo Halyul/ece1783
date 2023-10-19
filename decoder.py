@@ -3,8 +3,9 @@ from lib.utils.config import Config
 from lib.utils.misc import construct_reconstructed_frame, convert_within_range
 from lib.utils.quantization import quantization_matrix, frame_qtc_to_tc, residual_coefficients_to_residual_frame
 from lib.utils.differential import frame_differential_decoding
-from lib.utils.entropy import exp_golomb_decoding, reording_decoding, rle_decoding, array_exp_golomb_decoding
+from lib.utils.entropy import reording_decoding, rle_decoding, array_exp_golomb_decoding
 from lib.utils.enums import TypeMarker
+from lib.utils.misc import bytes_to_binstr
 import pathlib
 import numpy as np
 
@@ -28,7 +29,8 @@ q_matrix = quantization_matrix(params_i, params_qp)
 
 for i in range(total_frames):
     mv_file = mv_path.joinpath('{}'.format(i))
-    mv_file_lines = mv_file.read_text()
+    mv_file_lines = mv_file.read_bytes()
+    mv_file_lines = bytes_to_binstr(mv_file_lines)
     mv_dump = []
     mv_counter = 0
     type_marker = int(mv_file_lines[0])
@@ -69,7 +71,8 @@ for i in range(total_frames):
             prev_frame = np.array(prev_frame_uint8, dtype=np.int16)
 
     qtc_file = residual_path.joinpath('{}'.format(i))
-    qtc_file_lines = qtc_file.read_text()
+    qtc_file_lines = qtc_file.read_bytes()
+    qtc_file_lines = bytes_to_binstr(qtc_file_lines)
 
     qtc_dump = []
     qtc_counter = 0

@@ -9,6 +9,7 @@ from lib.utils.config import Config
 from lib.utils.quantization import quantization_matrix
 from lib.utils.entropy import reording_encoding, rle_encoding, exp_golomb_encoding
 from lib.utils.enums import TypeMarker
+from lib.utils.misc import binstr_to_bytes
 
 class MultiProcessingNew:
     def __init__(self, config) -> None:
@@ -176,9 +177,12 @@ def write_data_dispatcher(q: mp.Queue, config_class: Config) -> None:
             for item in object:
                 qtc_dump_text += ''.join(exp_golomb_encoding(x) for x in rle_encoding(reording_encoding(item)))
 
-        pathlib.Path.cwd().joinpath(config_class.get_output_path('main_folder'), config_class.get_output_path('mv_folder'), '{}'.format(frame_index)).write_text(mv_dump_text)
+        mv_dump_bytes = binstr_to_bytes(mv_dump_text)
+        qtc_dump_bytes = binstr_to_bytes(qtc_dump_text)
 
-        pathlib.Path.cwd().joinpath(config_class.get_output_path('main_folder'), config_class.get_output_path('residual_folder'), '{}'.format(frame_index)).write_text(qtc_dump_text)
+        pathlib.Path.cwd().joinpath(config_class.get_output_path('main_folder'), config_class.get_output_path('mv_folder'), '{}'.format(frame_index)).write_bytes(mv_dump_bytes)
+
+        pathlib.Path.cwd().joinpath(config_class.get_output_path('main_folder'), config_class.get_output_path('residual_folder'), '{}'.format(frame_index)).write_bytes(qtc_dump_bytes)
 
         with pathlib.Path.cwd().joinpath(config_class.get_output_path('main_folder'), config_class.get_output_path('mae_file')).open('a') as f:
             f.write("{} {}\n".format(frame_index, average_mae))

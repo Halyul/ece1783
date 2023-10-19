@@ -206,3 +206,19 @@ def extend_block(original_top_left: tuple, params_i: int, margin: tuple, shape: 
         bottom_right = (bottom_right[0], max_width)
     
     return top_left, bottom_right
+
+def binstr_to_bytes(s: str) -> bytearray:
+    padding = ''.join('0' for _ in range(8 - len(s) % 8))
+    s += padding
+    byte = bytearray()
+    while len(s) > 0:
+        x = int(s[-8:], 2)
+        byte.append(x)
+        s = s[:-8]
+    return byte
+
+def bytes_to_binstr(bytes: bytearray) -> str:
+    s = ''
+    for byte in bytes:
+        s = bin(byte)[2:].zfill(8) + s
+    return s
