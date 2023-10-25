@@ -3,10 +3,9 @@ from multiprocessing import Pool, Queue
 from pathlib import Path
 from lib.utils.misc import extend_block
 from lib.utils.enums import Intraframe
-from lib.utils.quantization import get_qtc_and_reconstructed_block
-from lib.utils.differential import frame_differential_encoding
 from lib.components.frame import Frame
 from lib.components.qtc import QTCBlock, QTCFrame
+from lib.components.mv import MotionVector, MotionVectorFrame
 
 """
     Calculate the motion vector for a block from the search window.
@@ -24,7 +23,6 @@ from lib.components.qtc import QTCBlock, QTCFrame
         min_block (np.ndarray): The block from the search window.
 """
 def calc_motion_vector(block: np.ndarray, block_coor: tuple, search_window: np.ndarray, search_window_coor: tuple, params_i: int) -> tuple:
-    min_mae = -1
     min_motion_vector = None
     min_yx = None
     block_reshaped = block.reshape(params_i * params_i)
@@ -35,40 +33,34 @@ def calc_motion_vector(block: np.ndarray, block_coor: tuple, search_window: np.n
             actual_x = x + search_window_coor[1]
             a = search_window[y:params_i + y, x:params_i + x]
             b = a.reshape(params_i * params_i)
-            mae = np.abs(b - block_reshaped).mean().astype(int)
-            motion_vector = (actual_y - block_coor[0], actual_x - block_coor[1])
-            if min_mae == -1:
-                min_mae = mae
+            motion_vector = MotionVector(actual_y - block_coor[0], actual_x - block_coor[1], np.abs(b - block_reshaped).mean())
+            if min_motion_vector == None:
                 min_motion_vector = motion_vector
                 min_yx = (actual_y, actual_x)
                 min_block = a
-            elif mae < min_mae:
-                min_mae = mae
+            elif motion_vector.mae < min_motion_vector.mae:
                 min_motion_vector = motion_vector
                 min_yx = (actual_y, actual_x)
                 min_block = a
-            elif mae == min_mae:
-                current_min_l1_norm = (abs(min_motion_vector[0]) + abs(min_motion_vector[1]))
-                new_min_l1_norm = (abs(motion_vector[0]) + abs(motion_vector[1]))
+            elif motion_vector.mae == min_motion_vector.mae:
+                current_min_l1_norm = min_motion_vector.l1_norm()
+                new_min_l1_norm = motion_vector.l1_norm()
                 if new_min_l1_norm < current_min_l1_norm:
-                    min_mae = mae
                     min_motion_vector = motion_vector
                     min_yx = (actual_y, actual_x)
                     min_block = a
                 elif new_min_l1_norm == current_min_l1_norm:
                     if actual_y < min_yx[0]:
-                        min_mae = mae
                         min_motion_vector = motion_vector
                         min_yx = (actual_y, actual_x)
                         min_block = a
                     elif actual_y == min_yx[0]:
                         if actual_x < min_yx[1]:
-                            min_mae = mae
                             min_motion_vector = motion_vector
                             min_yx = (actual_y, actual_x)
                             min_block = a
 
-    return min_mae, min_motion_vector, min_block
+    return min_motion_vector, min_block
 
 """
     Calculate intra-frame prediction.
@@ -89,15 +81,13 @@ def intraframe_prediction(frame, q_matrix: np.ndarray) -> tuple:
     height, width = frame.shape
     block_frame = frame.pixel_to_block().astype(int)
     reconstructed_block_dump = Frame(frame.index, height, width, params_i=frame.params_i, data=np.empty(frame.shape, dtype=int))
-    predictor_dump = []
+    predictor_dump = MotionVectorFrame(is_intraframe=True)
     qtc_block_dump = QTCFrame()
-    mae_dump = []
     y_counter = 0
     x_counter = 0
     for y in range(0, height, frame.params_i):
-        predictor_dump.append([])
+        predictor_dump.new_row()
         qtc_block_dump.new_row()
-        mae_dump.append([])
         for x in range(0, width, frame.params_i):
             current_coor = (y, x)
             current_block = block_frame[y_counter, x_counter]
@@ -120,13 +110,11 @@ def intraframe_prediction(frame, q_matrix: np.ndarray) -> tuple:
 
             predictor_block = None
             if ver_mae < hor_mae:
-                predictor_dump[y_counter].append(Intraframe.VERTICAL.value)
+                predictor_dump.append(MotionVector(Intraframe.VERTICAL.value, -1, ver_mae))
                 predictor_block = ver_block
-                mae_dump[y_counter].append(ver_mae)
             else:
-                predictor_dump[y_counter].append(Intraframe.HORIZONTAL.value)
+                predictor_dump.append(MotionVector(Intraframe.HORIZONTAL.value, -1, hor_mae))
                 predictor_block = hor_block
-                mae_dump[y_counter].append(hor_mae)
 
             qtc_block = QTCBlock(block=current_block - predictor_block, q_matrix=q_matrix)
             qtc_block.block_to_qtc()
@@ -137,7 +125,7 @@ def intraframe_prediction(frame, q_matrix: np.ndarray) -> tuple:
             x_counter += 1
         y_counter += 1
         x_counter = 0
-    return (qtc_block_dump, predictor_dump, mae_dump, reconstructed_block_dump)
+    return (qtc_block_dump, predictor_dump, reconstructed_block_dump)
 
 """
     Helper function to calculate the motion vector, residual blocks, and mae values.
@@ -161,7 +149,6 @@ def intraframe_prediction(frame, q_matrix: np.ndarray) -> tuple:
 def mv_parallel_helper(index: int, frame, params_r: int, q_matrix: np.ndarray, y: int) -> tuple:
     qtc_block_dump = []
     mv_dump = []
-    mae_dump = []
     reconstructed_block_dump = []
     for x in range(0, frame.width, frame.params_i):
         centered_top_left = (y, x)
@@ -171,7 +158,7 @@ def mv_parallel_helper(index: int, frame, params_r: int, q_matrix: np.ndarray, y
         
         search_window = frame.prev.raw[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
 
-        min_mae, min_motion_vector, min_block = calc_motion_vector(centered_block, centered_top_left, search_window, top_left, frame.params_i)
+        min_motion_vector, min_block = calc_motion_vector(centered_block, centered_top_left, search_window, top_left, frame.params_i)
 
         qtc_block = QTCBlock(block=centered_block - min_block, q_matrix=q_matrix)
         qtc_block.block_to_qtc()
@@ -181,8 +168,7 @@ def mv_parallel_helper(index: int, frame, params_r: int, q_matrix: np.ndarray, y
         reconstructed_block_dump.append(reconstructed_block)
 
         mv_dump.append(min_motion_vector)
-        mae_dump.append(min_mae)
-    return (index, qtc_block_dump, mv_dump, mae_dump, reconstructed_block_dump)
+    return (index, qtc_block_dump, mv_dump, reconstructed_block_dump)
 
 """
     Calculate the motion vector for a block from the search window in parallel.
@@ -206,7 +192,7 @@ def calc_motion_vector_parallel_helper(frame, params_r, q_matrix: np.ndarray, wr
         raise Exception('Frame index mismatch. Current: {}, Previous: {}'.format(frame.index, frame.prev.index))
     
     if frame.is_intraframe:
-        qtc_block_dump, mv_dump, mae_dump, current_reconstructed_frame = intraframe_prediction(frame, q_matrix)
+        qtc_block_dump, mv_dump, current_reconstructed_frame = intraframe_prediction(frame, q_matrix)
     else:
         jobs = []
         results = []
@@ -227,24 +213,20 @@ def calc_motion_vector_parallel_helper(frame, params_r, q_matrix: np.ndarray, wr
         
         results.sort(key=lambda x: x[0])
         qtc_block_dump = QTCFrame(len(results))
-        mv_dump = []
-        mae_dump = [None] * len(results)
+        mv_dump = MotionVectorFrame(length=len(results))
         reconstructed_block_dump = [None] * len(results)
         for result in results:
             index = result[0]
             qtc_block_dump.append_list(index, result[1])
-            mv_dump.append(result[2])
-            mae_dump[index] = result[3]
-            reconstructed_block_dump[index] = result[4]
+            mv_dump.append_list(index, result[2])
+            reconstructed_block_dump[index] = result[3]
         
         current_reconstructed_frame = Frame(index, frame.height, frame.width, params_i=frame.params_i)
         current_reconstructed_frame.block_to_pixel(np.array(reconstructed_block_dump))
-    
-    average_mae = np.array(mae_dump).mean().astype(int)
-    mv_dump = frame_differential_encoding(mv_dump, frame.is_intraframe)
+
     current_reconstructed_frame.convert_within_range()
 
     current_reconstructed_frame.dump(reconstructed_path.joinpath('{}'.format(frame.index)))
     
-    write_data_q.put((frame.index, (frame.is_intraframe, mv_dump), qtc_block_dump, average_mae))
+    write_data_q.put((frame.index, mv_dump, qtc_block_dump))
     print('Frame {} done'.format(frame.index))

@@ -5,9 +5,6 @@ from typing import Callable as function
 from lib.block_processing import calc_motion_vector_parallel_helper
 from lib.config.config import Config
 from lib.utils.quantization import quantization_matrix
-from lib.utils.entropy import reording_encoding, rle_encoding, exp_golomb_encoding
-from lib.utils.enums import TypeMarker
-from lib.utils.misc import binstr_to_bytes
 from lib.components.frame import Frame
 
 class MultiProcessingNew:
@@ -129,27 +126,11 @@ def write_data_dispatcher(q: mp.Queue, config: Config) -> None:
         data = q.get()
         if data == 'kill':
             break
-        frame_index, mv_dump, qtc_frame, average_mae = data
+        frame_index, mv_frame, qtc_frame = data
 
-        mv_dump_text = ''
-        is_intraframe = mv_dump[0]
-        if is_intraframe:
-            mv_dump_text += '{}'.format(TypeMarker.I_FRAME.value)
-        else:
-            mv_dump_text += '{}'.format(TypeMarker.P_FRAME.value)
-        for object in mv_dump[1]:
-            for item in object:
-                min_motion_vector = item
-                if is_intraframe:
-                    mv_dump_text += '{}'.format(exp_golomb_encoding(min_motion_vector))
-                else:
-                    mv_dump_text += '{}{}'.format(exp_golomb_encoding(min_motion_vector[0]), exp_golomb_encoding(min_motion_vector[1]))
-
-        mv_dump_bytes = binstr_to_bytes(mv_dump_text)
-
-        config.output_path.mv_folder.joinpath('{}'.format(frame_index)).write_bytes(mv_dump_bytes)
+        config.output_path.mv_folder.joinpath('{}'.format(frame_index)).write_bytes(mv_frame.tobytes())
 
         config.output_path.residual_folder.joinpath('{}'.format(frame_index)).write_bytes(qtc_frame.tobytes())
 
         with config.output_path.mae_file.open('a') as f:
-            f.write("{} {}\n".format(frame_index, average_mae))
+            f.write("{} {}\n".format(frame_index, mv_frame.average_mae()))
