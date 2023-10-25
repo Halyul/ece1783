@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-from lib.utils.config import Config
+from lib.config.config import Config
 import pathlib
 import numpy as np
 
-config_class = Config('config.yaml')
-config = config_class.config
+config = Config('config.yaml')
 
-decoder_output_path = pathlib.Path.cwd().joinpath(config['decoder']['output_path']['main_folder'])
-reconstructed_output_path = pathlib.Path.cwd().joinpath(config['output_path']['main_folder'], config['output_path']['reconstructed_folder'])
+decoder_output_path = config.decoder.output_path.main_folder
+reconstructed_output_path = config.output_path.reconstructed_folder
 
 flag = True
 

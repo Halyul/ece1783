@@ -1,5 +1,5 @@
 import pathlib
-from lib.utils.config import Config
+from lib.config.config import Config
 from lib.utils.enums import YUVFormat, Identifier
 from lib.utils.misc import get_padding
 
@@ -53,9 +53,8 @@ class YUVProcessor:
     }
     
     def __init__(self, config_path: str):
-        self.__config = Config(config_path)
-        self.config = self.__config.config
-        self.file_path = self.config['input']
+        self.__config = Config(config_path, True)
+        self.file_path = self.__config.input
         self.file = pathlib.Path.cwd().joinpath(self.file_path)
         if not self.file.exists():
             raise FileNotFoundError('File not found.')
@@ -75,8 +74,8 @@ class YUVProcessor:
         self.__byte = None
         self.__format = None
         self.__frame_index = 0
-        self.__stop_at = self.config['params']['stop_at']
-        self.upscale = self.config['upscale']
+        self.__stop_at = self.__config.params.stop_at
+        self.upscale = self.__config.upscale
         if self.upscale:
             if self.upscale == 420:
                 self.upscale = YUVFormat.YUV420
@@ -95,8 +94,8 @@ class YUVProcessor:
         self.__read_header()
         self.__read_frames()
         self.info['frame_count'] = self.__frame_index
-        paded_width, paded_height = get_padding(self.info['width'], self.info['height'], self.config['params']['i'])
-        pathlib.Path.cwd().joinpath(self.__config.get_output_path('main_folder'), self.__config.get_output_path('meta_file')).write_text(str("{},{},{},{}".format(self.__frame_index, paded_height, paded_width, self.config['params']['i'])))
+        paded_width, paded_height = get_padding(self.info['width'], self.info['height'], self.__config.params.i)
+        self.__config.output_path.meta_file.write_text(str("{},{},{},{}".format(self.__frame_index, paded_height, paded_width, self.__config.params.i)))
 
         self.__mp.done()
         return

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from lib.utils.config import Config
+from lib.config.config import Config
 from lib.signal_processing import psnr, ssim
 from lib.utils.misc import convert_within_range, construct_predicted_frame
 import matplotlib.pyplot as plt
@@ -169,18 +169,15 @@ def predicted_frame_parallel_helper(total_frames: int, mv_path: pathlib.Path, re
         print("predicted frame {} written".format(i))
 
 if __name__ == '__main__':
-    config_class = Config('config.yaml')
-    config = config_class.config
+    config = Config('config.yaml')
     pool = mp.Pool(mp.cpu_count())
 
-    output_path = pathlib.Path.cwd().joinpath(config['statistics']['path'])
-    if not output_path.exists():
-        output_path.mkdir()
+    output_path = pathlib.Path.cwd().joinpath(config.statistics.path)
 
-    video_name = config['input'].split('/')[-1]
-    params_i = config['params']['i']
-    params_r = config['params']['r']
-    params_n = config['params']['n']
+    video_name = config.input.split('/')[-1]
+    params_i = config.params.i
+    params_r = config.params.r
+    params_n = config.params.n
 
     video_path = output_path.joinpath(video_name)
     video_path.mkdir(exist_ok=True)
@@ -198,14 +195,12 @@ if __name__ == '__main__':
     predicted_pngs_path.mkdir(exist_ok=True)
     statistics_file = params_n_path.joinpath('statistics.csv')
 
-    data_path = pathlib.Path.cwd().joinpath(config['output_path']['main_folder'])
-    mv_path = data_path.joinpath(config['output_path']['mv_folder'])
-    original_path = data_path.joinpath(config['output_path']['original_folder'])
-    reconstructed_path = data_path.joinpath(config['output_path']['reconstructed_folder'])
-    residual_path = data_path.joinpath(config['output_path']['residual_folder'])
-    mv_path = data_path.joinpath(config['output_path']['mv_folder'])
-    meta_file = data_path.joinpath(config['output_path']['meta_file'])
-    mae_file = data_path.joinpath(config['output_path']['mae_file'])
+    original_path = config.output_path.original_folder
+    reconstructed_path = config.output_path.reconstructed_folder
+    residual_path = config.output_path.residual_folder
+    meta_file = config.output_path.meta_file
+    mae_file = config.output_path.mae_file
+    mv_path = config.output_path.mv_folder
 
     l = meta_file.read_text().split(',')
     total_frames = int(l[0])

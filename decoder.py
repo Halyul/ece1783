@@ -1,22 +1,18 @@
 #!/usr/bin/env python3
-from lib.utils.config import Config
+from lib.config.config import Config
 from lib.utils.misc import convert_within_range, construct_predicted_frame
-import pathlib
 import numpy as np
 import time
 
 start = time.time()
 
-config_class = Config('config.yaml')
-config = config_class.config
+config = Config('config.yaml')
 
-mv_path = pathlib.Path.cwd().joinpath(config['decoder']['input_path']['mv_folder'])
-residual_path = pathlib.Path.cwd().joinpath(config['decoder']['input_path']['residual_folder'])
-meta_file = pathlib.Path.cwd().joinpath(config['decoder']['input_path']['meta_file'])
+mv_path = config.decoder.input_path.mv_folder
+residual_path = config.decoder.input_path.residual_folder
+meta_file = config.decoder.input_path.meta_file
 
-output_path = pathlib.Path.cwd().joinpath(config['decoder']['output_path']['main_folder'])
-if not output_path.exists():
-    output_path.mkdir()
+output_path = config.decoder.output_path.main_folder
 
 l = meta_file.read_text().split(',')
 total_frames = int(l[0])
