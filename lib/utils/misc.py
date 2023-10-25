@@ -1,6 +1,5 @@
 import math
 import numpy as np
-from lib.utils.enums import Intraframe
 
 """
     Get the padding of the frame.
@@ -115,68 +114,6 @@ def block_create(np_array: np.ndarray, params_i: int) -> tuple:
 """
 def convert_within_range(np_array: np.ndarray, dtype: np.dtype=np.uint8) -> np.ndarray:
     return np.clip(np_array, 0, 255).astype(dtype)
-
-"""
-    Construct the predicted frame from the motion vector dump.
-
-    Parameters:
-        mv_dump (list): The motion vector dump.
-        prev_frame (np.ndarray): The previous frame. If None, then the frame is intraframe.
-        residual_frame (np.ndarray): The residual frame.
-        params_i (int): The block size.
-    
-    Returns:
-        (np.ndarray): The reconstructed frame.
-"""
-def construct_reconstructed_frame(mv_dump: list, prev_frame: np.ndarray, residual_frame: np.ndarray, params_i: int) -> np.ndarray:
-    y_counter = 0
-    x_counter = 0
-    if prev_frame is None:
-        # is intraframe
-        height, width = residual_frame.shape
-        reconstructed_block_dump = np.empty(residual_frame.shape, dtype=int)
-        for y in range(len(mv_dump)):
-            for x in range(len(mv_dump[y])):
-                current_coor = (y_counter, x_counter)
-                predictor = mv_dump[y][x]
-                if x == 0 and predictor == Intraframe.HORIZONTAL.value:
-                    # first column of blocks in horizontal
-                    predictor_block = np.full((params_i, 1), 128)
-                    repeat_value = Intraframe.HORIZONTAL.value
-                elif y == 0 and predictor == Intraframe.VERTICAL.value:
-                    # first row of blocks in vertical
-                    predictor_block = np.full((1, params_i), 128)
-                    repeat_value = Intraframe.VERTICAL.value
-                elif predictor == Intraframe.HORIZONTAL.value:
-                    # horizontal
-                    hor_top_left, _ = extend_block(current_coor, params_i, (0, 0, 0, 1), (height, width))
-                    predictor_block = reconstructed_block_dump[hor_top_left[0]:hor_top_left[0] + params_i, hor_top_left[1]:hor_top_left[1] + 1]
-                    repeat_value = Intraframe.HORIZONTAL.value
-                elif predictor == Intraframe.VERTICAL.value:
-                    # vertical
-                    ver_top_left, _ = extend_block(current_coor, params_i, (1, 0, 0, 0), (height, width))
-                    predictor_block = reconstructed_block_dump[ver_top_left[0]:ver_top_left[0] + 1, ver_top_left[1]:ver_top_left[1] + params_i]
-                    repeat_value = Intraframe.VERTICAL.value
-                else:
-                    raise Exception('Invalid predictor.')
-                predictor_block = predictor_block.repeat(params_i, repeat_value)
-                residual_block = residual_frame[y_counter:y_counter + params_i, x_counter:x_counter + params_i]
-                reconstructed_block_dump[y_counter:y_counter + params_i, x_counter:x_counter + params_i] = predictor_block + residual_block
-                x_counter += params_i
-            y_counter += params_i
-            x_counter = 0
-    else:
-        predicted_frame_dump = []
-        for i in range(len(mv_dump)):
-            predicted_frame_dump.append([])
-            for j in range(len(mv_dump[i])):
-                top_left = mv_dump[i][j]
-                predicted_frame_dump[i].append(prev_frame[y_counter + top_left[0]:y_counter + top_left[0] + params_i, x_counter + top_left[1]:x_counter + top_left[1] + params_i])
-                x_counter += params_i
-            y_counter += params_i
-            x_counter = 0
-        reconstructed_block_dump = pixel_create(np.array(predicted_frame_dump), prev_frame.shape, params_i) + residual_frame
-    return reconstructed_block_dump
 
 """
     Extend the block to include the margin.

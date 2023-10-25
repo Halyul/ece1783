@@ -8,6 +8,7 @@ from lib.utils.quantization import quantization_matrix
 from lib.utils.entropy import reording_encoding, rle_encoding, exp_golomb_encoding
 from lib.utils.enums import TypeMarker
 from lib.utils.misc import binstr_to_bytes
+from lib.components.frame import Frame
 
 class MultiProcessingNew:
     def __init__(self, config) -> None:
@@ -93,25 +94,20 @@ def block_processing_dispatcher(signal_q: mp.Queue, write_data_q: mp.Queue, conf
             print("waiting for original file {} to be written".format(counter))
             time.sleep(1)
             continue
-        file_bytes = file.read_bytes()
-        frame_uint8 = np.frombuffer(file_bytes, dtype=np.uint8).reshape(height, width)
-        frame = np.array(frame_uint8, dtype=np.int16)
-        frame_index = counter
+        frame = Frame(counter, height, width, params_i=config.params.i, is_intraframe=counter % config.params.i_period == 0)
+        frame.read_from_file(file)
+        frame.convert_type(np.int16)
         reconstructed_path = config.output_path.reconstructed_folder
-        if frame_index == 0:
-            prev_index = -1
-            prev_frame = np.full(height*width, 128).reshape(height, width)
-        else:
-            prev_index = frame_index - 1
+        if frame.index != 0:
+            prev_index = frame.index - 1
             prev_file = reconstructed_path.joinpath(str(prev_index))
             while not prev_file.exists():
                 print("waiting for reconstructed file {} to be written".format(prev_index))
                 time.sleep(1)
                 continue
-            prev_file_bytes = prev_file.read_bytes()
-            prev_frame_uint8 = np.frombuffer(prev_file_bytes, dtype=np.uint8).reshape(height, width)
-            prev_frame = np.array(prev_frame_uint8, dtype=np.int16)
-        calc_motion_vector_parallel_helper(frame, frame_index, prev_frame, prev_index, config.params, q_matrix, write_data_q, reconstructed_path, pool)
+            frame.read_prev_from_file(prev_file, prev_index)
+            frame.prev.convert_type(np.int16)
+        calc_motion_vector_parallel_helper(frame, config.params.r, q_matrix, write_data_q, reconstructed_path, pool)
         counter += 1
         if meta_file.exists():
             l = meta_file.read_text().split(',')

@@ -1,6 +1,5 @@
 from lib.utils.enums import YUVFormat
 import numpy as np
-import pathlib
 from lib.utils.misc import get_padding, convert_within_range
 from lib.config.config import Config
 
