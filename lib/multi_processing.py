@@ -19,6 +19,7 @@ class MultiProcessingNew:
         self.__debug = self.config.debug
 
         self.write_frame_q = self.manager.Queue()
+        self.write_frame_watchers = []
 
         self.signal_q = self.manager.Queue()
         self.start()
@@ -28,9 +29,11 @@ class MultiProcessingNew:
     """
     def start(self) -> None:
         self.block_processing_dispatcher_process = mp.Process(target=block_processing_dispatcher, args=(self.signal_q, self.write_frame_q, self.config,))
-        self.write_frame_watcher = mp.Process(target=write_data_dispatcher, args=(self.write_frame_q, self.config,))
         self.block_processing_dispatcher_process.start()
-        self.write_frame_watcher.start()
+        for _ in range(self.config.writer_no):
+            job = mp.Process(target=write_data_dispatcher, args=(self.write_frame_q, self.config,))
+            job.start()
+            self.write_frame_watchers.append(job)
 
     """
         Dispatch a job.
@@ -64,8 +67,10 @@ class MultiProcessingNew:
         self.pool.close()
         self.pool.join()
         self.block_processing_dispatcher_process.join()
-        self.write_frame_q.put('kill')
-        self.write_frame_watcher.join()
+        for _ in range(len(self.write_frame_watchers)):
+            self.write_frame_q.put('kill')
+        for job in self.write_frame_watchers:
+            job.join()
 
 """
     Dispatch block processing jobs.
