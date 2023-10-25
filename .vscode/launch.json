@@ -19,7 +19,7 @@
           "program": "ploter.py",
           "console": "integratedTerminal",
           "justMyCode": true,
-          "args": ["output/residual/0", "--h", "288", "--v", "--r"]
+          "args": ["output/residual/0", "--w", "352", "--v", "--r"]
         }
     ]
 }

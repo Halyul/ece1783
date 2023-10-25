@@ -8,6 +8,9 @@ class ConfigObject(ABC):
         self.validate()
 
     def __to_object(self):
+        """
+            Convert the config to an object.
+        """
         for key, value in self.config.items():
             setattr(self, key, value)
 

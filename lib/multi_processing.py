@@ -4,11 +4,11 @@ import time
 from typing import Callable as function
 from lib.block_processing import calc_motion_vector_parallel_helper
 from lib.config.config import Config
-from lib.utils.quantization import quantization_matrix
 from lib.components.frame import Frame
+from lib.components.qtc import quantization_matrix
 
 class MultiProcessingNew:
-    def __init__(self, config) -> None:
+    def __init__(self, config: Config) -> None:
         self.config = config
         self.manager = mp.Manager()
         self.pool = mp.Pool(mp.cpu_count())

@@ -67,22 +67,20 @@ def calc_motion_vector(block: np.ndarray, block_coor: tuple, search_window: np.n
     No parallisim due to block dependency.
 
     Parameters:
-        frame (np.ndarray): The current frame.
-        params_i (int): The block size.
+        frame (Frame): The current frame.
         q_matrix (np.ndarray): The quantization matrix.
 
     Returns:
-        qtc_block_dump (list): The quantized transformed coefficients.
-        predictor_dump (list): The predictor blocks.
-        mae_dump (list): The mean absolute errors.
-        reconstructed_block_dump (np.ndarray): The reconstructed blocks.
+        qtc_block_dump (QTCFrame): The quantized transformed coefficients.
+        predictor_dump (MotionVectorFrame): The predictor blocks.
+        reconstructed_block_dump (Frame): The reconstructed blocks.
 """
-def intraframe_prediction(frame, q_matrix: np.ndarray) -> tuple:
+def intraframe_prediction(frame: Frame, q_matrix: np.ndarray) -> tuple:
     height, width = frame.shape
     block_frame = frame.pixel_to_block().astype(int)
     reconstructed_block_dump = Frame(frame.index, height, width, params_i=frame.params_i, data=np.empty(frame.shape, dtype=int))
     predictor_dump = MotionVectorFrame(is_intraframe=True)
-    qtc_block_dump = QTCFrame()
+    qtc_block_dump = QTCFrame(params_i=frame.params_i)
     y_counter = 0
     x_counter = 0
     for y in range(0, height, frame.params_i):
@@ -132,11 +130,9 @@ def intraframe_prediction(frame, q_matrix: np.ndarray) -> tuple:
 
     Parameters:
         index (int): The index of the frame.
-        frame (np.ndarray): The current frame.
-        params_i (int): The block size.
+        frame (Frame): The current frame.
         params_r (int): The search window size.
         q_matrix (np.ndarray): The quantization matrix.
-        prev_frame (np.ndarray): The previous frame.
         y (int): The y coordinate of the block.
 
     Returns:
@@ -146,7 +142,7 @@ def intraframe_prediction(frame, q_matrix: np.ndarray) -> tuple:
         mae_dump (list): The mean absolute errors.
         reconstructed_block_dump (np.ndarray): The reconstructed blocks.
 """
-def mv_parallel_helper(index: int, frame, params_r: int, q_matrix: np.ndarray, y: int) -> tuple:
+def mv_parallel_helper(index: int, frame: Frame, params_r: int, q_matrix: np.ndarray, y: int) -> tuple:
     qtc_block_dump = []
     mv_dump = []
     reconstructed_block_dump = []
@@ -174,19 +170,14 @@ def mv_parallel_helper(index: int, frame, params_r: int, q_matrix: np.ndarray, y
     Calculate the motion vector for a block from the search window in parallel.
 
     Parameters:
-        frame (np.ndarray): The current frame.
-        frame_index (int): The current frame index.
-        prev_frame (np.ndarray): The previous frame.
-        prev_index (int): The previous frame index.
-        params_i (int): The block size.
+        frame (Frame): The current frame.
         params_r (int): The search window size.
-        is_intraframe (bool): Whether the current frame is an intraframe.
         q_matrix (np.ndarray): The quantization matrix.
         write_data_q (Queue): The queue to write data to.
         reconstructed_path (Path): The path to write the reconstructed frame to.
         pool (Pool): The pool of processes.
 """
-def calc_motion_vector_parallel_helper(frame, params_r, q_matrix: np.ndarray, write_data_q: Queue, reconstructed_path: Path, pool: Pool) -> None:
+def calc_motion_vector_parallel_helper(frame: Frame, params_r: int, q_matrix: np.ndarray, write_data_q: Queue, reconstructed_path: Path, pool: Pool) -> None:
     print("Dispatched", frame.index)
     if frame.prev.index + 1 != frame.index:
         raise Exception('Frame index mismatch. Current: {}, Previous: {}'.format(frame.index, frame.prev.index))
@@ -212,7 +203,7 @@ def calc_motion_vector_parallel_helper(frame, params_r, q_matrix: np.ndarray, wr
             results.append(job.get())
         
         results.sort(key=lambda x: x[0])
-        qtc_block_dump = QTCFrame(len(results))
+        qtc_block_dump = QTCFrame(length=len(results))
         mv_dump = MotionVectorFrame(length=len(results))
         reconstructed_block_dump = [None] * len(results)
         for result in results:

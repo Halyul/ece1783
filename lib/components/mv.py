@@ -1,7 +1,6 @@
-from lib.utils.misc import binstr_to_bytes, bytes_to_binstr
-from lib.utils.entropy import exp_golomb_encoding
+import pathlib
+from lib.utils.misc import binstr_to_bytes, bytes_to_binstr, exp_golomb_encoding, array_exp_golomb_decoding
 from lib.utils.enums import Intraframe, TypeMarker
-from lib.utils.entropy import array_exp_golomb_decoding
 
 class MotionVector:
 
@@ -11,7 +10,13 @@ class MotionVector:
         self.mae = mae
         self.raw = (self.y, self.x)
 
-    def l1_norm(self):
+    def l1_norm(self) -> int:
+        """
+            L1 norm of the motion vector.
+
+            Returns:
+                int: The L1 norm.
+        """
         return abs(self.y) + abs(self.x)
 
     def __add__(self, other):
@@ -27,15 +32,37 @@ class MotionVectorFrame:
         self.raw = [None] * length
 
     def new_row(self):
+        """
+            Add a new row.
+        """
         self.raw.append([])
 
-    def append(self, mv):
+    def append(self, mv: MotionVector):
+        """
+            Append a motion vector to the last row.
+
+            Parameters:
+                mv (MotionVector): The motion vector.
+        """
         self.raw[-1].append(mv)
     
-    def append_list(self, index, mvs):
+    def append_list(self, index, mvs: list):
+        """
+            Append a list of motion vectors to the last row.
+
+            Parameters:
+                index (int): The index of the row.
+                mvs (list): The motion vector list.
+        """
         self.raw[index] = mvs
 
-    def average_mae(self):
+    def average_mae(self) -> float:
+        """
+            Average MAE of the motion vectors.
+
+            Returns:
+                float: The average MAE.
+        """
         counter = 0
         total = 0
         for object in self.raw:
@@ -44,7 +71,13 @@ class MotionVectorFrame:
                 counter += 1
         return total / counter
 
-    def tobytes(self):
+    def tobytes(self) -> bytes:
+        """
+            Convert the motion vector frame to bytes.
+
+            Returns:
+                bytes: The motion vector frame as bytes.
+        """
         text = ''
         if self.is_intraframe:
             prev_mv = MotionVector(Intraframe.HORIZONTAL.value, 0)
@@ -63,7 +96,15 @@ class MotionVectorFrame:
                     text += '{}{}'.format(exp_golomb_encoding(diff_mv.y), exp_golomb_encoding(diff_mv.x))
         return binstr_to_bytes(text)
 
-    def read_from_file(self, path, width, params_i):
+    def read_from_file(self, path: pathlib.Path, width: int, params_i: int):
+        """
+            Read motion vector frame from file
+
+            Parameters:
+                path (pathlib.Path): The path to read from.
+                width (int): The width of the frame.
+                params_i (int): The I parameter.
+        """
         mv = path.read_bytes()
         mv = bytes_to_binstr(mv)
         type_marker = int(mv[0])

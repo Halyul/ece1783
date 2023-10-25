@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 from lib.config.config import Config
 from lib.signal_processing import psnr, ssim
-from lib.utils.quantization import quantization_matrix
-from lib.components.qtc import QTCFrame
+from lib.components.qtc import QTCFrame, quantization_matrix
 import matplotlib.pyplot as plt
 import pathlib
 from PIL import Image
@@ -107,9 +106,9 @@ def residual_parallel_helper(original_path: pathlib.Path, residual_path: pathlib
     prev_frame = np.frombuffer(prev_file, dtype=np.uint8).reshape(height, width).astype(np.int16)
 
     qtc_file = residual_path.joinpath('{}'.format(i))
-    qtc_frame = QTCFrame()
-    qtc_frame.read_from_file(qtc_file, q_matrix, width, params_i)
-    generated_residual_frame = qtc_frame.to_residual_frame(height, width, params_i)
+    qtc_frame = QTCFrame(params_i=params_i)
+    qtc_frame.read_from_file(qtc_file, q_matrix, width)
+    generated_residual_frame = qtc_frame.to_residual_frame()
 
     residual_frame = current_frame - prev_frame
     residual_frame = np.abs(residual_frame)
@@ -146,9 +145,9 @@ def predicted_frame_parallel_helper(total_frames: int, residual_path: pathlib.Pa
     for i in range(total_frames):
         qtc_file = residual_path.joinpath('{}'.format(i))
         qtc_file = residual_path.joinpath('{}'.format(i))
-        qtc_frame = QTCFrame()
-        qtc_frame.read_from_file(qtc_file, q_matrix, width, params_i)
-        residual_frame = qtc_frame.to_residual_frame(height, width, params_i)
+        qtc_frame = QTCFrame(params_i=params_i)
+        qtc_frame.read_from_file(qtc_file, q_matrix, width)
+        residual_frame = qtc_frame.to_residual_frame()
 
         reconstructed_file = reconstructed_path.joinpath(str(i)).read_bytes()
         reconstructed_frame = np.frombuffer(reconstructed_file, dtype=np.uint8).reshape(height, width).astype(np.int16)

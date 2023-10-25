@@ -2,13 +2,8 @@
 from lib.config.config import Config
 from lib.utils.misc import extend_block
 from lib.utils.enums import Intraframe
-from lib.utils.quantization import quantization_matrix
-from lib.utils.differential import frame_differential_decoding
-from lib.utils.entropy import array_exp_golomb_decoding
-from lib.utils.enums import TypeMarker
-from lib.utils.misc import bytes_to_binstr
 from lib.components.frame import Frame
-from lib.components.qtc import QTCFrame
+from lib.components.qtc import QTCFrame, quantization_matrix
 from lib.components.mv import MotionVectorFrame
 import numpy as np
 import time
@@ -108,9 +103,9 @@ if __name__ == '__main__':
             frame.prev.convert_type(np.int16)
 
         qtc_file = residual_path.joinpath('{}'.format(i))
-        qtc_frame = QTCFrame()
-        qtc_frame.read_from_file(qtc_file, q_matrix, width, params_i)
-        residual_frame = qtc_frame.to_residual_frame(height, width, params_i)
+        qtc_frame = QTCFrame(params_i=params_i)
+        qtc_frame.read_from_file(qtc_file, q_matrix, width)
+        residual_frame = qtc_frame.to_residual_frame()
 
         frame = construct_reconstructed_frame(mv_dump, frame, residual_frame)
         frame.convert_within_range()

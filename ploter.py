@@ -4,8 +4,8 @@ import argparse
 import pathlib
 import numpy as np
 from lib.config.config import Config
-from lib.utils.misc import get_padding, yuv2rgb, block_create
-from lib.utils.quantization import quantization_matrix, frame_qtc_to_tc, residual_coefficients_to_residual_frame
+from lib.utils.misc import get_padding, yuv2rgb
+from lib.components.qtc import QTCFrame, quantization_matrix
 
 CONFIG = Config('config.yaml')
 
@@ -31,39 +31,30 @@ if __name__ == '__main__':
         print("File 2 does not exist")
         exit(1)
 
-    if args.height <= 0 and args.width <= 0:
-        print("Height or width must be greater than 0")
+    if args.width <= 0:
+        print("Width must be greater than 0")
         exit(1)
 
     height = args.height
     width = args.width
     params_i = CONFIG.params.i
     params_qp = CONFIG.params.qp
-    q_matrix = quantization_matrix(params_i, params_qp)
     pad_width, pad_height = get_padding(width, height, params_i)
 
     if args.view:
-        with open(file1, 'rb') as f:
-            file_bytes = f.read()
         
         if args.residual:
-            residual_np_array = np.frombuffer(file_bytes, dtype=np.int16).reshape(pad_height, pad_width)
-            residual_frame_coefficients, _, _, _ = block_create(residual_np_array, params_i)
-            residual_frame_coefficients = frame_qtc_to_tc(residual_frame_coefficients, q_matrix)
-            data = residual_coefficients_to_residual_frame(residual_frame_coefficients, params_i, residual_np_array.shape)
-            data = np.abs(data) * args.diff_factor
+            q_matrix = quantization_matrix(params_i, params_qp)
+            qtc_frame = QTCFrame(params_i=params_i)
+            qtc_frame.read_from_file(file1, q_matrix, pad_width)
+            residual_frame = qtc_frame.to_residual_frame()
+            data = np.abs(residual_frame.raw) * args.diff_factor
         else:
-            data = np.frombuffer(file_bytes, dtype=np.uint8).reshape(pad_height, pad_width)
+            data = np.frombuffer(file1.read_bytes(), dtype=np.uint8).reshape(pad_height, pad_width)
     else:
-        
-        with open(file1, 'rb') as f:
-            averaged_file_bytes = f.read()
 
-        with open(file2, 'rb') as f:
-            padded_file_bytes = f.read()
-
-        averaged_data = np.frombuffer(averaged_file_bytes, dtype=np.uint8).reshape(pad_height, pad_width)
-        padded_file_data = np.frombuffer(padded_file_bytes, dtype=np.uint8).reshape(pad_height, pad_width)
+        averaged_data = np.frombuffer(file1.read_bytes(), dtype=np.uint8).reshape(pad_height, pad_width)
+        padded_file_data = np.frombuffer(file2.read_bytes(), dtype=np.uint8).reshape(pad_height, pad_width)
         
         data = (averaged_data - padded_file_data) * args.diff_factor
     _, _, _, data = yuv2rgb(data)

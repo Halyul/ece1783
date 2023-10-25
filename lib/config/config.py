@@ -19,10 +19,16 @@ class Config:
         self.__create_output_path()
 
     def __clean_up(self):
+        """
+            Clean up the output folder.
+        """
         if self.output_path.main_folder.exists():
             shutil.rmtree(self.output_path.main_folder)
-        
+    
     def __create_output_path(self) -> None:
+        """
+            Create the output path.
+        """
         self.output_path.main_folder.mkdir(parents=True, exist_ok=True)
         for key, value in self.output_path.config.items():
             if key == 'main_folder':
@@ -34,10 +40,10 @@ class Config:
             elif key.endswith('_file'):
                 setattr(self.output_path, key, self.output_path.main_folder.joinpath(value))
 
-    """
-        Read the config file.
-    """
     def __read_config(self) -> None:
+        """
+            Read the config file.
+        """
         try:
             self.config = yaml.load(open(self.config_path, "r"), Loader=yaml.FullLoader)
             for key, value in self.config.items():
@@ -47,16 +53,16 @@ class Config:
         if 'output_path' not in self.config:
             raise Exception('Output not found in config.')
     
-    """
-        Get the output path.
-
-        Parameters:
-            key (str): The key of the output path.
-
-        Returns:
-            pathlib.Path: The output path.
-    """
     def get_output_path(self, key: str) -> pathlib.Path:
+        """
+            Get the output path.
+
+            Parameters:
+                key (str): The key of the output path.
+
+            Returns:
+                pathlib.Path: The output path.
+        """
         return self.config['output_path'][key]
 
 class Paths(ConfigObject):
@@ -65,12 +71,18 @@ class Paths(ConfigObject):
 
 class Params(ConfigObject):
     def validate(self):
+        """
+            Validate the param ranges.
+        """
         if not (0 <= self.qp <= (math.log2(self.i) + 7)):
             raise Exception('Invalid qp value.')
         return
     
 class Decoder(ConfigObject):
     def validate(self):
+        """
+            Create decoder paths.
+        """
         self.input_path = Paths(self.input_path)
         self.output_path = Paths(self.output_path)
 
@@ -86,6 +98,9 @@ class Decoder(ConfigObject):
     
 class Statistics(ConfigObject):
     def validate(self):
+        """
+            Create statistics paths.
+        """
         self.path = pathlib.Path.cwd().joinpath(self.path)
         if not self.path.exists():
             self.path.mkdir()
