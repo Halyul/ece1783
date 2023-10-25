@@ -8,8 +8,6 @@ class Config:
         self.config = None
         self.__read_config()
         self.debug = self.config['debug'] if 'debug' in self.config else False
-        self.input = self.config['input']
-        self.upscale = self.config['upscale']
         self.output_path = Paths(self.config['output_path'])
         self.params = Params(self.config['params'])
         self.statistics = Statistics(self.config['statistics'])
@@ -42,6 +40,8 @@ class Config:
     def __read_config(self) -> None:
         try:
             self.config = yaml.load(open(self.config_path, "r"), Loader=yaml.FullLoader)
+            for key, value in self.config.items():
+                setattr(self, key, value)
         except Exception as e:
             raise
         if 'output_path' not in self.config:
