@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 from lib.config.config import Config
-from lib.utils.misc import extend_block
-from lib.utils.enums import Intraframe
-from lib.components.frame import Frame
+from lib.enums import Intraframe
+from lib.components.frame import Frame, extend_block
 from lib.components.qtc import QTCFrame, quantization_matrix
 from lib.components.mv import MotionVectorFrame
 import numpy as np

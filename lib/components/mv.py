@@ -1,6 +1,6 @@
 import pathlib
 from lib.utils.misc import binstr_to_bytes, bytes_to_binstr, exp_golomb_encoding, array_exp_golomb_decoding
-from lib.utils.enums import Intraframe, TypeMarker
+from lib.enums import Intraframe, TypeMarker
 
 class MotionVector:
 

@@ -1,8 +1,7 @@
 import pathlib
-import math
 from lib.config.config import Config
-from lib.utils.enums import YUVFormat, Identifier
-from lib.utils.misc import get_padding
+from lib.enums import YUVFormat, Identifier
+from lib.components.frame import get_padding
 
 from lib.frame_processing import upscale
 from lib.multi_processing import MultiProcessingNew as MP
