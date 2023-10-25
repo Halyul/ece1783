@@ -33,7 +33,7 @@ def calc_motion_vector(block: np.ndarray, block_coor: tuple, search_window: np.n
             actual_x = x + search_window_coor[1]
             a = search_window[y:params_i + y, x:params_i + x]
             b = a.reshape(params_i * params_i)
-            mae = np.abs(b - block_reshaped).mean().astype(int)
+            mae = np.abs(b - block_reshaped).mean()
             motion_vector = (actual_y - block_coor[0], actual_x - block_coor[1])
             if min_mae == -1:
                 min_mae = mae
