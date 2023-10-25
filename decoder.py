@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from lib.utils.config import Config
+from lib.config.config import Config
 from lib.utils.misc import construct_reconstructed_frame, convert_within_range
 from lib.utils.quantization import quantization_matrix, frame_qtc_to_tc, residual_coefficients_to_residual_frame
 from lib.utils.differential import frame_differential_decoding
@@ -12,16 +12,13 @@ import time
 
 start = time.time()
 
-config_class = Config('config.yaml')
-config = config_class.config
+config = Config('config.yaml')
 
-mv_path = pathlib.Path.cwd().joinpath(config['decoder']['input_path']['mv_folder'])
-residual_path = pathlib.Path.cwd().joinpath(config['decoder']['input_path']['residual_folder'])
-meta_file = pathlib.Path.cwd().joinpath(config['decoder']['input_path']['meta_file'])
+mv_path = config.decoder.input_path.mv_folder
+residual_path = config.decoder.input_path.residual_folder
+meta_file = config.decoder.input_path.meta_file
 
-output_path = pathlib.Path.cwd().joinpath(config['decoder']['output_path']['main_folder'])
-if not output_path.exists():
-    output_path.mkdir()
+output_path = config.decoder.output_path.main_folder
 
 l = meta_file.read_text().split(',')
 total_frames = int(l[0])

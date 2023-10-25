@@ -4,6 +4,7 @@ import pathlib
 from matplotlib import pyplot as plt
 from lib.utils.entropy import *
 from lib.utils.misc import *
+from lib.config.config import Config
 
 width = 12
 height = 10
@@ -45,10 +46,5 @@ a[:, :, 0] = [
     [132 133 134 135 136 137 138 139 140 141 142 143]
 ]
 """
-
-b = a[:, :, 0]
-x = "001001101101101011000100100101"
-c = binstr_to_bytes(x)
-d = bytes_to_binstr(c)
-print(x)
-print(d)
+c = Config('config.yaml')
+print(c)
