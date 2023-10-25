@@ -29,7 +29,7 @@ class Frame:
         return np_block_array
     
     def block_to_pixel(self, np_array: np.ndarray):
-        self.raw = pixel_create(np_array, self.shape, self.params_i)
+        self.raw = pixel_create(np_array, self.shape, self.params_i).astype(np.int16)
         return self.raw
     
     def convert_within_range(self, dtype: np.dtype=np.uint8):
@@ -37,3 +37,9 @@ class Frame:
 
     def dump(self, path):
         path.write_bytes(self.raw.tobytes())
+
+    def __add__(self, other):
+        return Frame(self.index, self.height, self.width, data=self.raw + other.raw)
+    
+    def __sub__(self, other):
+        return Frame(self.index, self.height, self.width, data=self.raw - other.raw)

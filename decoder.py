@@ -2,12 +2,13 @@
 from lib.config.config import Config
 from lib.utils.misc import extend_block
 from lib.utils.enums import Intraframe
-from lib.utils.quantization import quantization_matrix, frame_qtc_to_tc, residual_coefficients_to_residual_frame
+from lib.utils.quantization import quantization_matrix
 from lib.utils.differential import frame_differential_decoding
-from lib.utils.entropy import reording_decoding, rle_decoding, array_exp_golomb_decoding
+from lib.utils.entropy import array_exp_golomb_decoding
 from lib.utils.enums import TypeMarker
 from lib.utils.misc import bytes_to_binstr
 from lib.components.frame import Frame
+from lib.components.qtc import QTCFrame
 import numpy as np
 import time
 
@@ -55,7 +56,7 @@ def construct_reconstructed_frame(mv_dump: list, frame: np.ndarray, residual_fra
                 else:
                     raise Exception('Invalid predictor.')
                 predictor_block = predictor_block.repeat(params_i, repeat_value)
-                residual_block = residual_frame[y_counter:y_counter + params_i, x_counter:x_counter + params_i]
+                residual_block = residual_frame.raw[y_counter:y_counter + params_i, x_counter:x_counter + params_i]
                 reconstructed_block_dump.raw[y_counter:y_counter + params_i, x_counter:x_counter + params_i] = predictor_block + residual_block
                 x_counter += params_i
             y_counter += params_i
@@ -71,7 +72,7 @@ def construct_reconstructed_frame(mv_dump: list, frame: np.ndarray, residual_fra
             y_counter += params_i
             x_counter = 0
         frame.block_to_pixel(np.array(predicted_frame_dump))
-        frame.raw += residual_frame
+        frame += residual_frame
         reconstructed_block_dump = frame
 
     return reconstructed_block_dump
@@ -132,27 +133,9 @@ if __name__ == '__main__':
             frame.prev.convert_type(np.int16)
 
         qtc_file = residual_path.joinpath('{}'.format(i))
-        qtc_file_lines = qtc_file.read_bytes()
-        qtc_file_lines = bytes_to_binstr(qtc_file_lines)
-
-        qtc_dump = []
-        qtc_counter = 0
-        qtc_single_array = array_exp_golomb_decoding(qtc_file_lines)
-        qtc_pending = []
-        for item in qtc_single_array:
-            qtc_pending.append(item)
-            if item == 0:
-                if qtc_counter == 0:
-                    qtc_dump.append([])
-                qtc_dump[-1].append(reording_decoding(rle_decoding(qtc_pending, q_matrix.shape), q_matrix.shape))
-                qtc_pending = []
-                qtc_counter += 1
-                if qtc_counter == width // params_i:
-                    qtc_counter = 0
-
-        residual_frame_qtc = np.array(qtc_dump, dtype=np.int16)
-        residual_frame_coefficients = frame_qtc_to_tc(residual_frame_qtc, q_matrix)
-        residual_frame = residual_coefficients_to_residual_frame(residual_frame_coefficients, params_i, (height, width))
+        qtc_frame = QTCFrame()
+        qtc_frame.read_from_file(qtc_file, q_matrix, width, params_i)
+        residual_frame = qtc_frame.to_residual_frame(height, width, params_i)
         
         mv_dump = frame_differential_decoding(mv_dump, is_intraframe)
         frame = construct_reconstructed_frame(mv_dump, frame, residual_frame)

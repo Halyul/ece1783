@@ -129,7 +129,7 @@ def write_data_dispatcher(q: mp.Queue, config: Config) -> None:
         data = q.get()
         if data == 'kill':
             break
-        frame_index, mv_dump, qtc_dump, average_mae = data
+        frame_index, mv_dump, qtc_frame, average_mae = data
 
         mv_dump_text = ''
         is_intraframe = mv_dump[0]
@@ -145,17 +145,11 @@ def write_data_dispatcher(q: mp.Queue, config: Config) -> None:
                 else:
                     mv_dump_text += '{}{}'.format(exp_golomb_encoding(min_motion_vector[0]), exp_golomb_encoding(min_motion_vector[1]))
 
-        qtc_dump_text = ''
-        for object in qtc_dump:
-            for item in object:
-                qtc_dump_text += ''.join(exp_golomb_encoding(x) for x in rle_encoding(reording_encoding(item)))
-
         mv_dump_bytes = binstr_to_bytes(mv_dump_text)
-        qtc_dump_bytes = binstr_to_bytes(qtc_dump_text)
 
         config.output_path.mv_folder.joinpath('{}'.format(frame_index)).write_bytes(mv_dump_bytes)
 
-        config.output_path.residual_folder.joinpath('{}'.format(frame_index)).write_bytes(qtc_dump_bytes)
+        config.output_path.residual_folder.joinpath('{}'.format(frame_index)).write_bytes(qtc_frame.tobytes())
 
         with config.output_path.mae_file.open('a') as f:
             f.write("{} {}\n".format(frame_index, average_mae))

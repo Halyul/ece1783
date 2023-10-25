@@ -6,6 +6,7 @@ from lib.utils.enums import Intraframe
 from lib.utils.quantization import get_qtc_and_reconstructed_block
 from lib.utils.differential import frame_differential_encoding
 from lib.components.frame import Frame
+from lib.components.qtc import QTCBlock, QTCFrame
 
 """
     Calculate the motion vector for a block from the search window.
@@ -87,16 +88,15 @@ def calc_motion_vector(block: np.ndarray, block_coor: tuple, search_window: np.n
 def intraframe_prediction(frame, q_matrix: np.ndarray) -> tuple:
     height, width = frame.shape
     block_frame = frame.pixel_to_block().astype(int)
-    # reconstructed_block_dump = np.empty(frame.shape, dtype=int)
     reconstructed_block_dump = Frame(frame.index, height, width, params_i=frame.params_i, data=np.empty(frame.shape, dtype=int))
     predictor_dump = []
-    qtc_block_dump = []
+    qtc_block_dump = QTCFrame()
     mae_dump = []
     y_counter = 0
     x_counter = 0
     for y in range(0, height, frame.params_i):
         predictor_dump.append([])
-        qtc_block_dump.append([])
+        qtc_block_dump.new_row()
         mae_dump.append([])
         for x in range(0, width, frame.params_i):
             current_coor = (y, x)
@@ -128,8 +128,11 @@ def intraframe_prediction(frame, q_matrix: np.ndarray) -> tuple:
                 predictor_block = hor_block
                 mae_dump[y_counter].append(hor_mae)
 
-            qtc_dump, reconstructed_block = get_qtc_and_reconstructed_block(current_block, predictor_block, q_matrix)
-            qtc_block_dump[y_counter].append(qtc_dump)
+            qtc_block = QTCBlock(block=current_block - predictor_block, q_matrix=q_matrix)
+            qtc_block.block_to_qtc()
+            reconstructed_block = qtc_block.block + predictor_block
+
+            qtc_block_dump.append(qtc_block)
             reconstructed_block_dump.raw[y_counter * frame.params_i:y_counter * frame.params_i + frame.params_i, x_counter * frame.params_i:x_counter * frame.params_i + frame.params_i] = reconstructed_block
             x_counter += 1
         y_counter += 1
@@ -170,8 +173,11 @@ def mv_parallel_helper(index: int, frame, params_r: int, q_matrix: np.ndarray, y
 
         min_mae, min_motion_vector, min_block = calc_motion_vector(centered_block, centered_top_left, search_window, top_left, frame.params_i)
 
-        qtc_dump, reconstructed_block = get_qtc_and_reconstructed_block(centered_block, min_block, q_matrix)
-        qtc_block_dump.append(qtc_dump)
+        qtc_block = QTCBlock(block=centered_block - min_block, q_matrix=q_matrix)
+        qtc_block.block_to_qtc()
+        reconstructed_block = qtc_block.block + min_block
+
+        qtc_block_dump.append(qtc_block)
         reconstructed_block_dump.append(reconstructed_block)
 
         mv_dump.append(min_motion_vector)
@@ -220,13 +226,13 @@ def calc_motion_vector_parallel_helper(frame, params_r, q_matrix: np.ndarray, wr
             results.append(job.get())
         
         results.sort(key=lambda x: x[0])
-        qtc_block_dump = [None] * len(results)
+        qtc_block_dump = QTCFrame(len(results))
         mv_dump = []
         mae_dump = [None] * len(results)
         reconstructed_block_dump = [None] * len(results)
         for result in results:
             index = result[0]
-            qtc_block_dump[index] = result[1]
+            qtc_block_dump.append_list(index, result[1])
             mv_dump.append(result[2])
             mae_dump[index] = result[3]
             reconstructed_block_dump[index] = result[4]

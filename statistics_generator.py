@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 from lib.config.config import Config
 from lib.signal_processing import psnr, ssim
-from lib.utils.quantization import quantization_matrix, frame_qtc_to_tc, residual_coefficients_to_residual_frame
-from lib.utils.misc import bytes_to_binstr
-from lib.utils.entropy import reording_decoding, rle_decoding, array_exp_golomb_decoding
+from lib.utils.quantization import quantization_matrix
+from lib.components.qtc import QTCFrame
 import matplotlib.pyplot as plt
 import pathlib
 from PIL import Image
@@ -107,34 +106,17 @@ def residual_parallel_helper(original_path: pathlib.Path, residual_path: pathlib
     current_frame = np.frombuffer(current_file, dtype=np.uint8).reshape(height, width).astype(np.int16)
     prev_frame = np.frombuffer(prev_file, dtype=np.uint8).reshape(height, width).astype(np.int16)
 
-    qtc_file_lines = qtc_file.read_bytes()
-    qtc_file_lines = bytes_to_binstr(qtc_file_lines)
-
-    qtc_dump = []
-    qtc_counter = 0
-    qtc_single_array = array_exp_golomb_decoding(qtc_file_lines)
-    qtc_pending = []
-    for item in qtc_single_array:
-        qtc_pending.append(item)
-        if item == 0:
-            if qtc_counter == 0:
-                qtc_dump.append([])
-            qtc_dump[-1].append(reording_decoding(rle_decoding(qtc_pending, q_matrix.shape), q_matrix.shape))
-            qtc_pending = []
-            qtc_counter += 1
-            if qtc_counter == width // params_i:
-                qtc_counter = 0
-
-    residual_frame_qtc = np.array(qtc_dump, dtype=np.int16)
-    residual_frame_coefficients = frame_qtc_to_tc(residual_frame_qtc, q_matrix)
-    generated_residual_frame = residual_coefficients_to_residual_frame(residual_frame_coefficients, params_i, (height, width)).astype(np.int16)
+    qtc_file = residual_path.joinpath('{}'.format(i))
+    qtc_frame = QTCFrame()
+    qtc_frame.read_from_file(qtc_file, q_matrix, width, params_i)
+    generated_residual_frame = qtc_frame.to_residual_frame(height, width, params_i)
 
     residual_frame = current_frame - prev_frame
     residual_frame = np.abs(residual_frame)
 
     # combine two image
     residual_frame = Image.fromarray(residual_frame)
-    generated_residual_frame = Image.fromarray(generated_residual_frame)
+    generated_residual_frame = Image.fromarray(generated_residual_frame.raw)
     residual_frame, width, height = add_margin(residual_frame, 10, 5, 0, 10, 255)
     generated_residual_frame, _, _ = add_margin(generated_residual_frame, 10, 10, 0, 5, 255)
     combined = Image.new('L', (width * 2, height))
@@ -163,32 +145,15 @@ def residual_parallel_helper(original_path: pathlib.Path, residual_path: pathlib
 def predicted_frame_parallel_helper(total_frames: int, residual_path: pathlib.Path, reconstructed_path: pathlib.Path, output_path: pathlib.Path, height: int, width: int, params_i: int, q_matrix: np.ndarray) -> None:
     for i in range(total_frames):
         qtc_file = residual_path.joinpath('{}'.format(i))
-        qtc_file_lines = qtc_file.read_bytes()
-        qtc_file_lines = bytes_to_binstr(qtc_file_lines)
-
-        qtc_dump = []
-        qtc_counter = 0
-        qtc_single_array = array_exp_golomb_decoding(qtc_file_lines)
-        qtc_pending = []
-        for item in qtc_single_array:
-            qtc_pending.append(item)
-            if item == 0:
-                if qtc_counter == 0:
-                    qtc_dump.append([])
-                qtc_dump[-1].append(reording_decoding(rle_decoding(qtc_pending, q_matrix.shape), q_matrix.shape))
-                qtc_pending = []
-                qtc_counter += 1
-                if qtc_counter == width // params_i:
-                    qtc_counter = 0
-
-        residual_frame_qtc = np.array(qtc_dump, dtype=np.int16)
-        residual_frame_coefficients = frame_qtc_to_tc(residual_frame_qtc, q_matrix)
-        residual_frame = residual_coefficients_to_residual_frame(residual_frame_coefficients, params_i, (height, width)).astype(np.int16)
+        qtc_file = residual_path.joinpath('{}'.format(i))
+        qtc_frame = QTCFrame()
+        qtc_frame.read_from_file(qtc_file, q_matrix, width, params_i)
+        residual_frame = qtc_frame.to_residual_frame(height, width, params_i)
 
         reconstructed_file = reconstructed_path.joinpath(str(i)).read_bytes()
         reconstructed_frame = np.frombuffer(reconstructed_file, dtype=np.uint8).reshape(height, width).astype(np.int16)
 
-        predicted_frame = reconstructed_frame - residual_frame
+        predicted_frame = reconstructed_frame - residual_frame.raw
         predicted_frame = predicted_frame.astype(np.uint8)
         predicted_frame = Image.fromarray(predicted_frame)
         predicted_frame.save(output_path.joinpath('{}.png'.format(i)))
@@ -238,30 +203,30 @@ if __name__ == '__main__':
     params_qp = int(l[4])
     q_matrix = quantization_matrix(params_i, params_qp)
 
-    # residual_jobs = []
-    # for i in range(1, total_frames):
-    #     job = pool.apply_async(func=residual_parallel_helper, args=(
-    #         original_path,
-    #         residual_path,
-    #         i,
-    #         height,
-    #         width,
-    #         residual_pngs_path,
-    #         params_i,
-    #         q_matrix,
-    #     ))
-    #     residual_jobs.append(job)
+    residual_jobs = []
+    for i in range(1, total_frames):
+        job = pool.apply_async(func=residual_parallel_helper, args=(
+            original_path,
+            residual_path,
+            i,
+            height,
+            width,
+            residual_pngs_path,
+            params_i,
+            q_matrix,
+        ))
+        residual_jobs.append(job)
 
-    # predicted_job = pool.apply_async(func=predicted_frame_parallel_helper, args=(
-    #     total_frames,
-    #     residual_path,
-    #     reconstructed_path,
-    #     predicted_pngs_path,
-    #     height,
-    #     width,
-    #     params_i,
-    #     q_matrix,
-    # ))
+    predicted_job = pool.apply_async(func=predicted_frame_parallel_helper, args=(
+        total_frames,
+        residual_path,
+        reconstructed_path,
+        predicted_pngs_path,
+        height,
+        width,
+        params_i,
+        q_matrix,
+    ))
 
     mae_list = mae_file.read_text().split('\n')
     mae_dict = {}
@@ -340,10 +305,10 @@ if __name__ == '__main__':
 
     np.savetxt(statistics_file, np.column_stack((array, size_array)), delimiter=',', header='frame_index,mae,psnr,ssim,mv_qtc_size', comments='')
 
-    # for job in residual_jobs:
-    #     job.get()
+    for job in residual_jobs:
+        job.get()
 
-    # predicted_job.get()
+    predicted_job.get()
 
     pool.close()
     pool.join()
