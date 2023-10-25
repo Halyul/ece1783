@@ -2,16 +2,16 @@ from lib.utils.enums import YUVFormat
 import numpy as np
 import pathlib
 from lib.utils.misc import get_padding, convert_within_range
-from lib.utils.config import Config
+from lib.config.config import Config
 
 """
     Upscale the frame to YUV444.
 
     Parameters:
         data (tuple): The data to upscale.
-        config_class (Config): The config object.
+        config (Config): The config object.
 """
-def upscale(data: tuple, config_class: Config) -> None:
+def upscale(data: tuple, config: Config) -> None:
     (width, frame_index, format_tuple, yuv_components, mode) = data
 
     pixel_list = []
@@ -41,7 +41,7 @@ def upscale(data: tuple, config_class: Config) -> None:
     np_y_array = np_pixel_array[:, :, 0]
     width = np_pixel_array.shape[1]
     height = np_pixel_array.shape[0]
-    paded_width, paded_height = get_padding(width, height, config_class.config['params']['i'])
+    paded_width, paded_height = get_padding(width, height, config.params.i)
     pad_width = paded_width - width
     pad_height = paded_height - height
     np_y_array_padded = np.pad(np_y_array, ((0, pad_height), (0, pad_width)), 'constant', constant_values=128)
@@ -49,7 +49,7 @@ def upscale(data: tuple, config_class: Config) -> None:
     # simply write to a file, so the execution order is guaranteed?
     # q.put((np.array(pixel_list), frame_index))
     np_y_array_padded = convert_within_range(np_y_array_padded)
-    pathlib.Path.cwd().joinpath(config_class.get_output_path('main_folder'), config_class.get_output_path('original_folder'), '{}'.format(frame_index)).write_bytes(np_y_array_padded)
+    config.output_path.original_folder.joinpath('{}'.format(frame_index)).write_bytes(np_y_array_padded)
 
     np_uv_array = convert_within_range(np.stack((np_pixel_array[:, :, 1], np_pixel_array[:, :, 2]), axis=2))
-    pathlib.Path.cwd().joinpath(config_class.get_output_path('main_folder'), config_class.get_output_path('uv_folder'), '{}'.format(frame_index)).write_bytes(np_uv_array)
+    config.output_path.uv_folder.joinpath('{}'.format(frame_index)).write_bytes(np_uv_array)

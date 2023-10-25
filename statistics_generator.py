@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-from lib.utils.config import Config
+from lib.config.config import Config
 from lib.signal_processing import psnr, ssim
 from lib.utils.quantization import quantization_matrix, frame_qtc_to_tc, residual_coefficients_to_residual_frame
 from lib.utils.misc import bytes_to_binstr
-from lib.utils.entropy import exp_golomb_decoding, reording_decoding, rle_decoding, array_exp_golomb_decoding
+from lib.utils.entropy import reording_decoding, rle_decoding, array_exp_golomb_decoding
 import matplotlib.pyplot as plt
 import pathlib
 from PIL import Image
@@ -195,19 +195,16 @@ def predicted_frame_parallel_helper(total_frames: int, residual_path: pathlib.Pa
         print("predicted frame {} written".format(i))
 
 if __name__ == '__main__':
-    config_class = Config('config.yaml')
-    config = config_class.config
+    config = Config('config.yaml')
     pool = mp.Pool(mp.cpu_count())
 
-    output_path = pathlib.Path.cwd().joinpath(config['statistics']['path'])
-    if not output_path.exists():
-        output_path.mkdir()
+    output_path = pathlib.Path.cwd().joinpath(config.statistics.path)
 
-    video_name = config['input'].split('/')[-1]
-    params_i = config['params']['i']
-    params_r = config['params']['r']
-    params_qp = config['params']['qp']
-    params_i_period = config['params']['i_period']
+    video_name = config.input.split('/')[-1]
+    params_i = config.params.i
+    params_r = config.params.r
+    params_qp = config.params.qp
+    params_i_period = config.params.i_period
 
     video_path = output_path.joinpath(video_name)
     video_path.mkdir(exist_ok=True)
@@ -227,13 +224,12 @@ if __name__ == '__main__':
     predicted_pngs_path.mkdir(exist_ok=True)
     statistics_file = params_i_period_path.joinpath('statistics.csv')
 
-    data_path = pathlib.Path.cwd().joinpath(config['output_path']['main_folder'])
-    original_path = data_path.joinpath(config['output_path']['original_folder'])
-    reconstructed_path = data_path.joinpath(config['output_path']['reconstructed_folder'])
-    residual_path = data_path.joinpath(config['output_path']['residual_folder'])
-    meta_file = data_path.joinpath(config['output_path']['meta_file'])
-    mae_file = data_path.joinpath(config['output_path']['mae_file'])
-    mv_path = data_path.joinpath(config['output_path']['mv_folder'])
+    original_path = config.output_path.original_folder
+    reconstructed_path = config.output_path.reconstructed_folder
+    residual_path = config.output_path.residual_folder
+    meta_file = config.output_path.meta_file
+    mae_file = config.output_path.mae_file
+    mv_path = config.output_path.mv_folder
 
     l = meta_file.read_text().split(',')
     total_frames = int(l[0])

@@ -3,11 +3,11 @@ from matplotlib import pyplot as plt
 import argparse
 import pathlib
 import numpy as np
-from lib.utils.config import Config
+from lib.config.config import Config
 from lib.utils.misc import get_padding, yuv2rgb, block_create
 from lib.utils.quantization import quantization_matrix, frame_qtc_to_tc, residual_coefficients_to_residual_frame
 
-CONFIG = Config('config.yaml').config
+CONFIG = Config('config.yaml')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -37,8 +37,8 @@ if __name__ == '__main__':
 
     height = args.height
     width = args.width
-    params_i = CONFIG['params']['i']
-    params_qp = CONFIG['params']['qp']
+    params_i = CONFIG.params.i
+    params_qp = CONFIG.params.qp
     q_matrix = quantization_matrix(params_i, params_qp)
     pad_width, pad_height = get_padding(width, height, params_i)
 
