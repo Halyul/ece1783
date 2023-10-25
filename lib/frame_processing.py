@@ -12,6 +12,7 @@ from lib.config.config import Config
 """
 def upscale(data: tuple, config: Config) -> None:
     (width, frame_index, format_tuple, yuv_components, mode) = data
+    print("Upscaling", frame_index)
 
     pixel_list = []
 

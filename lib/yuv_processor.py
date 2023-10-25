@@ -214,7 +214,6 @@ class YUVProcessor:
                 )
             )
             
-            print(self.__frame_index)
             self.__frame_index += 1
 
         return

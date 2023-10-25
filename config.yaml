@@ -1,7 +1,6 @@
 debug: false
 input: videos/foreman_cif.y4m
 upscale: 444
-writer_no: 1
 output_path:
   main_folder: output
   original_folder: original

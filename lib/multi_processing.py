@@ -13,12 +13,7 @@ class MultiProcessingNew:
         self.manager = mp.Manager()
         self.pool = mp.Pool(mp.cpu_count())
         self.jobs = []
-        
         self.__debug = self.config.debug
-
-        self.write_frame_q = self.manager.Queue()
-        self.write_frame_watchers = []
-
         self.signal_q = self.manager.Queue()
         self.start()
 
@@ -26,12 +21,8 @@ class MultiProcessingNew:
         Start watcher processes.
     """
     def start(self) -> None:
-        self.block_processing_dispatcher_process = mp.Process(target=block_processing_dispatcher, args=(self.signal_q, self.write_frame_q, self.config,))
+        self.block_processing_dispatcher_process = mp.Process(target=block_processing_dispatcher, args=(self.signal_q, self.config,))
         self.block_processing_dispatcher_process.start()
-        for _ in range(self.config.writer_no):
-            job = mp.Process(target=write_data_dispatcher, args=(self.write_frame_q, self.config,))
-            job.start()
-            self.write_frame_watchers.append(job)
 
     """
         Dispatch a job.
@@ -65,10 +56,6 @@ class MultiProcessingNew:
         self.pool.close()
         self.pool.join()
         self.block_processing_dispatcher_process.join()
-        for _ in range(len(self.write_frame_watchers)):
-            self.write_frame_q.put('kill')
-        for job in self.write_frame_watchers:
-            job.join()
 
 """
     Dispatch block processing jobs.
@@ -79,10 +66,9 @@ class MultiProcessingNew:
 
     Parameters:
         signal_q (mp.Queue): The queue to get signal from.
-        write_data_q (mp.Queue): The queue to write to.
         config (Config): The config object.
 """
-def block_processing_dispatcher(signal_q: mp.Queue, write_data_q: mp.Queue, config: Config) -> None:
+def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
     pool = mp.Pool(mp.cpu_count())
 
     q_matrix = quantization_matrix(config.params.i, config.params.qp)
@@ -90,10 +76,11 @@ def block_processing_dispatcher(signal_q: mp.Queue, write_data_q: mp.Queue, conf
     run_flag = True
     meta_file = config.output_path.meta_file
     height, width = signal_q.get()
+    jobs = []
     while run_flag:
         file = config.output_path.original_folder.joinpath(str(counter))
         while not file.exists():
-            print("waiting for original file {} to be written".format(counter))
+            print("Waiting for original file {} to be written".format(counter))
             time.sleep(1)
             continue
         frame = Frame(counter, height, width, params_i=config.params.i, is_intraframe=counter % config.params.i_period == 0)
@@ -104,18 +91,24 @@ def block_processing_dispatcher(signal_q: mp.Queue, write_data_q: mp.Queue, conf
             prev_index = frame.index - 1
             prev_file = reconstructed_path.joinpath(str(prev_index))
             while not prev_file.exists():
-                print("waiting for reconstructed file {} to be written".format(prev_index))
+                print("Waiting for reconstructed file {} to be written".format(prev_index))
                 time.sleep(1)
                 continue
             frame.read_prev_from_file(prev_file, prev_index)
             frame.prev.convert_type(np.int16)
-        calc_motion_vector_parallel_helper(frame, config.params.r, q_matrix, write_data_q, reconstructed_path, pool)
+        index, mv_dump, qtc_block_dump = calc_motion_vector_parallel_helper(frame, config.params.r, q_matrix, reconstructed_path, pool)
+        job = pool.apply_async(func=write_data_dispatcher, args=((index, mv_dump, qtc_block_dump), config,))
+        jobs.append(job)
         counter += 1
         if meta_file.exists():
             l = meta_file.read_text().split(',')
             last = int(l[0])
             if counter == last:
                 run_flag = False
+
+    for job in jobs: 
+        job.get()
+
     pool.close()
     pool.join()
 
@@ -123,19 +116,16 @@ def block_processing_dispatcher(signal_q: mp.Queue, write_data_q: mp.Queue, conf
     Write data to disk.
 
     Parameters:
-        q (mp.Queue): The queue to read from.
+        data (tuple): The data to write.
         config (Config): The config object.
 """
-def write_data_dispatcher(q: mp.Queue, config: Config) -> None:
-    while True:
-        data = q.get()
-        if data == 'kill':
-            break
-        frame_index, mv_frame, qtc_frame = data
+def write_data_dispatcher(data: tuple, config: Config) -> None:
+    frame_index, mv_frame, qtc_frame = data
+    print("Dumping", frame_index)
 
-        config.output_path.mv_folder.joinpath('{}'.format(frame_index)).write_bytes(mv_frame.tobytes())
+    config.output_path.mv_folder.joinpath('{}'.format(frame_index)).write_bytes(mv_frame.tobytes())
 
-        config.output_path.residual_folder.joinpath('{}'.format(frame_index)).write_bytes(qtc_frame.tobytes())
+    config.output_path.residual_folder.joinpath('{}'.format(frame_index)).write_bytes(qtc_frame.tobytes())
 
-        with config.output_path.mae_file.open('a') as f:
-            f.write("{} {}\n".format(frame_index, mv_frame.average_mae()))
+    with config.output_path.mae_file.open('a') as f:
+        f.write("{} {}\n".format(frame_index, mv_frame.average_mae()))

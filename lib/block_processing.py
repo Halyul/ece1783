@@ -173,12 +173,11 @@ def mv_parallel_helper(index: int, frame: Frame, params_r: int, q_matrix: np.nda
         frame (Frame): The current frame.
         params_r (int): The search window size.
         q_matrix (np.ndarray): The quantization matrix.
-        write_data_q (Queue): The queue to write data to.
         reconstructed_path (Path): The path to write the reconstructed frame to.
         pool (Pool): The pool of processes.
 """
-def calc_motion_vector_parallel_helper(frame: Frame, params_r: int, q_matrix: np.ndarray, write_data_q: Queue, reconstructed_path: Path, pool: Pool) -> None:
-    print("Dispatched", frame.index)
+def calc_motion_vector_parallel_helper(frame: Frame, params_r: int, q_matrix: np.ndarray, reconstructed_path: Path, pool: Pool) -> None:
+    print("Processing", frame.index)
     if frame.prev.index + 1 != frame.index:
         raise Exception('Frame index mismatch. Current: {}, Previous: {}'.format(frame.index, frame.prev.index))
     
@@ -219,5 +218,4 @@ def calc_motion_vector_parallel_helper(frame: Frame, params_r: int, q_matrix: np
 
     current_reconstructed_frame.dump(reconstructed_path.joinpath('{}'.format(frame.index)))
     
-    write_data_q.put((frame.index, mv_dump, qtc_block_dump))
-    print('Frame {} done'.format(frame.index))
+    return frame.index, mv_dump, qtc_block_dump
