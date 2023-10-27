@@ -55,6 +55,7 @@ class MultiProcessingNew:
 
         self.pool.close()
         self.pool.join()
+        self.signal_q.put((0, 0))
         self.block_processing_dispatcher_process.join()
 
 """
@@ -76,6 +77,10 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
     run_flag = True
     meta_file = config.output_path.meta_file
     height, width = signal_q.get()
+    if height == 0 or width == 0:
+        pool.close()
+        pool.join()
+        return
     jobs = []
     while run_flag:
         file = config.output_path.original_folder.joinpath(str(counter))

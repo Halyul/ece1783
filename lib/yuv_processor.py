@@ -145,7 +145,9 @@ class YUVProcessor:
                 self.info['comment'] += current_decoded_byte
             else:
                 raise Exception('Invalid header identifier.')
-        
+        if len(raw_header) == 0:
+            self.__mp.done()
+            raise Exception('Invalid YUV file. Header is empty.')
         self.info['width'] = int(self.info['width'])
         self.info['height'] = int(self.info['height'])
         if self.info['framerate'] in self.FRAMERATE_PREDEFINED:

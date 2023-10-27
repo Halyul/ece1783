@@ -4,9 +4,8 @@ import argparse
 import pathlib
 import numpy as np
 from lib.config.config import Config
-from lib.utils.misc import yuv2rgb
 from lib.components.qtc import QTCFrame, quantization_matrix
-from lib.components.frame import get_padding
+from lib.components.frame import get_padding, yuv2rgb
 
 CONFIG = Config('config.yaml')
 
