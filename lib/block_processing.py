@@ -168,7 +168,7 @@ def calc_motion_vector_parallel_helper(frame: np.ndarray, frame_index: int, prev
     
     predicted_frame = construct_predicted_frame(mv_dump, prev_frame, params_i)
     residual_frame = pixel_create(np.array(residual_block_dump), frame.shape, params_i)
-    average_mae = np.array(mae_dump).mean().astype(int)
+    average_mae = np.array(mae_dump).mean()
 
     current_reconstructed_frame = predicted_frame + residual_frame
     current_reconstructed_frame = convert_within_range(current_reconstructed_frame)
