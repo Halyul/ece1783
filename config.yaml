@@ -1,5 +1,9 @@
 debug: false
-input: videos/foreman_cif.y4m
+input: videos/foreman_cif.yuv
+video_params:
+  height: 352
+  width: 288
+  color_space: 420
 upscale: 444
 writer_no: 2
 output_path:
@@ -14,7 +18,7 @@ output_path:
 params:
   i: 8 # 2, 8, 64
   r: 2 # 1, 4, 8
-  stop_at: -1 # stop after processing how many frames, -1 to disable
+  stop_at: 10 # stop after processing how many frames, -1 to disable
   qp: 3
   i_period: 4
 
