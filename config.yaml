@@ -1,5 +1,9 @@
 debug: false
-input: videos/foreman_cif.y4m
+input: videos/foreman_cif.yuv
+video_params:
+  height: 352
+  width: 288
+  color_space: 420
 upscale: 444
 output_path:
   main_folder: output

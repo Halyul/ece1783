@@ -12,6 +12,7 @@ class Config:
         self.debug = self.config['debug'] if 'debug' in self.config else False
         self.output_path = Paths(self.config['output_path'])
         self.params = Params(self.config['params'])
+        self.video_params = Params(self.config['video_params'])
         self.statistics = Statistics(self.config['statistics'])
         self.decoder = Decoder(self.config['decoder'])
 

@@ -103,63 +103,62 @@ class YUVProcessor:
         Read the header of the YUV file.
     """
     def __read_header(self) -> None:
-        raw_header = bytearray()
-        while self.__read_byte() != Identifier.END.value:
-            raw_header.extend(self.__byte)
-            if self.__byte == Identifier.SPACER.value:
-                self.HEADER_IDENTIFIERS['__order'].pop(0)
-                continue
+        # raw_header = bytearray()
+        # while self.__read_byte() != Identifier.END.value:
+        #     raw_header.extend(self.__byte)
+        #     if self.__byte == Identifier.SPACER.value:
+        #         self.HEADER_IDENTIFIERS['__order'].pop(0)
+        #         continue
 
-            order = self.HEADER_IDENTIFIERS['__order'][0]
-            current_decoded_byte = self.__decode_current_byte()
-            if order == 'FORMAT':
-                self.info['format'] += current_decoded_byte
-            elif order == 'WIDTH':
-                if self.__byte == self.HEADER_IDENTIFIERS['WIDTH']:
-                    continue
-                self.info['width'] += current_decoded_byte
-            elif order == 'HEIGHT':
-                if self.__byte == self.HEADER_IDENTIFIERS['HEIGHT']:
-                    continue
-                self.info['height'] += current_decoded_byte
-            elif order == 'FRAMERATE':
-                if self.__byte == self.HEADER_IDENTIFIERS['FRAMERATE']:
-                    continue
-                self.info['framerate'] += current_decoded_byte
-            elif order == 'INTERLACE':
-                if self.__byte == self.HEADER_IDENTIFIERS['INTERLACE']:
-                    continue
-                self.info['interlace'] += current_decoded_byte
-            elif order == 'ASPECT_RATIO':
-                if self.__byte == self.HEADER_IDENTIFIERS['ASPECT_RATIO']:
-                    continue
-                self.info['aspect_ratio'] += current_decoded_byte
-            elif order == 'COLOR_SPACE':
-                if self.__byte == self.HEADER_IDENTIFIERS['COLOR_SPACE']:
-                    continue
-                self.info['color_space'] += current_decoded_byte
-            elif order == 'COMMENT':
-                if self.__byte == self.HEADER_IDENTIFIERS['COMMENT']:
-                    continue
-                self.info['comment'] += current_decoded_byte
-            else:
-                raise Exception('Invalid header identifier.')
-        if len(raw_header) == 0:
-            self.__mp.done()
-            raise Exception('Invalid YUV file. Header is empty.')
-        self.info['width'] = int(self.info['width'])
-        self.info['height'] = int(self.info['height'])
-        if self.info['framerate'] in self.FRAMERATE_PREDEFINED:
-            self.info['framerate'] = self.FRAMERATE_PREDEFINED[self.info['framerate']]
-        if self.info['interlace'] in self.INTERLACE_PREDEFINED:
-            self.info['interlace'] = self.INTERLACE_PREDEFINED[self.info['interlace']]
-        if self.info['aspect_ratio'] in self.ASPECT_RATIO_PREDEFINED:
-            self.info['aspect_ratio'] = self.ASPECT_RATIO_PREDEFINED[self.info['aspect_ratio']]
-        if self.info['color_space'] in self.COLOR_SPACE_PREDEFINED:
-            self.info['color_space'] = self.COLOR_SPACE_PREDEFINED[self.info['color_space']]
-        else:
-            self.info['color_space'] = str(YUVFormat.YUV420.value)
+        #     order = self.HEADER_IDENTIFIERS['__order'][0]
+        #     current_decoded_byte = self.__decode_current_byte()
+        #     if order == 'FORMAT':
+        #         self.info['format'] += current_decoded_byte
+        #     elif order == 'WIDTH':
+        #         if self.__byte == self.HEADER_IDENTIFIERS['WIDTH']:
+        #             continue
+        #         self.info['width'] += current_decoded_byte
+        #     elif order == 'HEIGHT':
+        #         if self.__byte == self.HEADER_IDENTIFIERS['HEIGHT']:
+        #             continue
+        #         self.info['height'] += current_decoded_byte
+        #     elif order == 'FRAMERATE':
+        #         if self.__byte == self.HEADER_IDENTIFIERS['FRAMERATE']:
+        #             continue
+        #         self.info['framerate'] += current_decoded_byte
+        #     elif order == 'INTERLACE':
+        #         if self.__byte == self.HEADER_IDENTIFIERS['INTERLACE']:
+        #             continue
+        #         self.info['interlace'] += current_decoded_byte
+        #     elif order == 'ASPECT_RATIO':
+        #         if self.__byte == self.HEADER_IDENTIFIERS['ASPECT_RATIO']:
+        #             continue
+        #         self.info['aspect_ratio'] += current_decoded_byte
+        #     elif order == 'COLOR_SPACE':
+        #         if self.__byte == self.HEADER_IDENTIFIERS['COLOR_SPACE']:
+        #             continue
+        #         self.info['color_space'] += current_decoded_byte
+        #     elif order == 'COMMENT':
+        #         if self.__byte == self.HEADER_IDENTIFIERS['COMMENT']:
+        #             continue
+        #         self.info['comment'] += current_decoded_byte
+        #     else:
+        #         raise Exception('Invalid header identifier.')
         
+        self.info['width'] = int(self.__config.video_params.width)
+        self.info['height'] = int(self.__config.video_params.height)
+        # if self.info['framerate'] in self.FRAMERATE_PREDEFINED:
+        #     self.info['framerate'] = self.FRAMERATE_PREDEFINED[self.info['framerate']]
+        # if self.info['interlace'] in self.INTERLACE_PREDEFINED:
+        #     self.info['interlace'] = self.INTERLACE_PREDEFINED[self.info['interlace']]
+        # if self.info['aspect_ratio'] in self.ASPECT_RATIO_PREDEFINED:
+        #     self.info['aspect_ratio'] = self.ASPECT_RATIO_PREDEFINED[self.info['aspect_ratio']]
+        # if self.info['color_space'] in self.COLOR_SPACE_PREDEFINED:
+        #     self.info['color_space'] = self.COLOR_SPACE_PREDEFINED[self.info['color_space']]
+        # else:
+            # self.info['color_space'] = str(YUVFormat.YUV420.value)
+
+        self.info['color_space'] = str(YUVFormat.YUV420.value)
         if self.info['color_space'] == str(YUVFormat.YUV422.value):
             self.__format = YUVFormat.YUV422
         elif self.info['color_space'] == str(YUVFormat.YUV444.value):
@@ -183,28 +182,32 @@ class YUVProcessor:
     """
     def __read_frames(self) -> None:
         self.__read_byte() # skil END_IDENTIFIER, after this line, self.__byte == b'F'
-        while self.__byte != Identifier.END.value:
-            # skip first "FRAME"
-            # when exit, self.__byte == self.END_IDENTIFIER
-            self.__read_byte()
-
+        # while self.__byte != Identifier.END.value:
+        #     # skip first "FRAME"
+        #     # when exit, self.__byte == self.END_IDENTIFIER
+        #     self.__read_byte()
+        index = 0
         while not self.__eof():
             
             if self.__frame_index == self.__stop_at:
                 break
 
             result = bytearray()
-            while not ((len(result) > 6 and result[-len(Identifier.FRAME.value):] == Identifier.FRAME.value) or self.__eof()):
+            # while not ((len(result) > 6 and result[-len(Identifier.FRAME.value):] == Identifier.FRAME.value) or self.__eof()):
+            while index != self.__offsets[0] + self.__offsets[1] + self.__offsets[2]:
                 # read yuv components + "FRAME"
                 # when exit, self.__byte == self.END_IDENTIFIER
                 result.extend(self.__read_byte())
+                index += 1
+            index = 0
 
-            if self.__eof():
-                # end of file
-                yuv_components = result
-            else:
-                # has next "FRAME"
-                yuv_components = result[:-len(Identifier.FRAME.value)]
+            # if self.__eof():
+            #     # end of file
+            #     yuv_components = result
+            # else:
+            #     # has next "FRAME"
+            #     yuv_components = result[:-len(Identifier.FRAME.value)]
+            yuv_components = result
 
             # process each frame
             self.__mp.dispatch(
