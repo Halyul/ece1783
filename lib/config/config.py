@@ -94,7 +94,7 @@ class Params(ConfigObject):
         """
             Validate the param ranges.
         """
-        if not (0 <= self.qp <= (math.log2(self.i) + 7)):
+        if 'qp' in self.config and not (0 <= self.qp <= (math.log2(self.i) + 7)):
             raise Exception('Invalid qp value.')
         return
     
