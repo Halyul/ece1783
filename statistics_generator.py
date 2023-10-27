@@ -257,7 +257,7 @@ if __name__ == '__main__':
     array = np.array(results)
     np.savetxt(statistics_file, array, delimiter=',', header='frame_index,mae,psnr,ssim', comments='')
 
-    plt.plot(array[:, 0], array[:, 1])
+    plt.plot(array[:, 0][1:], array[:, 1][1:])
     plt.xlabel('frame index')
     plt.ylabel('mae')
     plt.title('mae for {}\ni={}, r={}, n={}\nh={}, w={}'.format(video_name, params_i, params_r, params_n, height, width))
