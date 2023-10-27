@@ -236,7 +236,7 @@ def calc_motion_vector_parallel_helper(frame: np.ndarray, frame_index: int, prev
         
         current_reconstructed_frame = pixel_create(np.array(reconstructed_block_dump), frame.shape, params_i)
     
-    average_mae = np.array(mae_dump).mean().astype(int)
+    average_mae = np.array(mae_dump).mean()
     mv_dump = frame_differential_encoding(mv_dump, is_intraframe)
     current_reconstructed_frame = convert_within_range(current_reconstructed_frame)
 
