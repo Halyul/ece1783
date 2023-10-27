@@ -1,8 +1,8 @@
 debug: false
 input: videos/foreman_cif.yuv
 video_params:
-  height: 352
-  width: 288
+  height: 288
+  width: 352
   color_space: 420
 upscale: 444
 output_path:
