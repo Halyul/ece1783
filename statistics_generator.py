@@ -278,6 +278,14 @@ if __name__ == '__main__':
     plt.savefig(params_n_path.joinpath('ssim.png'))
     plt.clf()
 
+    size_array = []
+    for i in range(total_frames):
+        qtc_file = residual_path.joinpath('{}'.format(i))
+        qtc_file_lines = qtc_file.read_bytes()
+        size = len(qtc_file_lines) * 8
+        size_array.append(size)
+    print(f"residual magnitude:{str(size_array)} ")
+    print(f"residual magnitude:{str(sum(size_array))} ")
     for job in residual_jobs:
         job.get()
 
@@ -285,3 +293,4 @@ if __name__ == '__main__':
 
     pool.close()
     pool.join()
+

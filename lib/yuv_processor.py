@@ -174,7 +174,8 @@ class YUVProcessor:
         # raw_header.extend(self.HEADER_IDENTIFIERS['COLOR_SPACE'])
         # raw_header.extend(bytes(str(self.upscale.value), 'ascii')) # add upscale
         # raw_header.extend(self.__byte) # add END_IDENTIFIER
-        self.__mp.signal_q.put((self.info['height'], self.info['width']))
+        paded_width, paded_height = get_padding(self.info['width'], self.info['height'], self.__config.params.i)
+        self.__mp.signal_q.put((paded_height, paded_width))
         return
     
     """
