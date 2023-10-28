@@ -47,9 +47,7 @@ if __name__ == '__main__':
                 total_psnr = 0
                 for j in range(stop_at):
                     mv_file = mv_path.joinpath('{}'.format(j))
-                    print(mv_file.stat().st_size)
                     qtc_file = residual_path.joinpath('{}'.format(j))
-                    print(qtc_file.stat().st_size)
                     total_size += mv_file.stat().st_size * 8 + qtc_file.stat().st_size * 8
                     original_file = original_path.joinpath(str(j)).read_bytes()
                     reconstructed_file = reconstructed_path.joinpath(str(j)).read_bytes()
@@ -102,4 +100,3 @@ if __name__ == '__main__':
         plt.legend()
         plt.savefig(config.statistics.path.joinpath('execution_time_i_{}.png'.format(params_i_list[i])))
         plt.clf()
-    statistics_file = config.statistics.path.joinpath('statistics.csv')
