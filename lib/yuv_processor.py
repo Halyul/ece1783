@@ -1,7 +1,7 @@
 import pathlib
 import math
 from lib.config.config import Config
-from lib.utils.enums import YUVFormat, Identifier
+from lib.utils.enums import YUVFormat
 from lib.utils.misc import get_padding
 
 from lib.frame_processing import upscale
@@ -53,8 +53,8 @@ class YUVProcessor:
         'mono': 'YCbCr plane only',
     }
     
-    def __init__(self, config_path: str):
-        self.__config = Config(config_path, True)
+    def __init__(self, config_path: str, config_override: dict = {}):
+        self.__config = Config(config_path, True, config_override)
         self.file_path = self.__config.input
         self.file = pathlib.Path.cwd().joinpath(self.file_path)
         if not self.file.exists():
@@ -95,8 +95,7 @@ class YUVProcessor:
         self.__read_header()
         self.__read_frames()
         self.info['frame_count'] = self.__frame_index
-        paded_width, paded_height = get_padding(self.info['width'], self.info['height'], self.__config.params.i)
-        self.__config.output_path.meta_file.write_text(str("{},{},{},{},{}".format(self.__frame_index, paded_height, paded_width, self.__config.params.i, self.__config.params.qp)))
+        self.__config.output_path.meta_file.write_text(str("{},{},{},{},{}".format(self.__frame_index, self.info['paded_height'], self.info['paded_width'], self.__config.params.i, self.__config.params.qp)))
 
         self.__mp.done()
         return
@@ -175,7 +174,8 @@ class YUVProcessor:
         # raw_header.extend(self.HEADER_IDENTIFIERS['COLOR_SPACE'])
         # raw_header.extend(bytes(str(self.upscale.value), 'ascii')) # add upscale
         # raw_header.extend(self.__byte) # add END_IDENTIFIER
-        self.__mp.signal_q.put((self.info['height'], self.info['width']))
+        self.info['paded_width'], self.info['paded_height'] = get_padding(self.info['width'], self.info['height'], self.__config.params.i)
+        self.__mp.signal_q.put((self.info['paded_height'], self.info['paded_width']))
         return
     
     """

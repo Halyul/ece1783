@@ -3,10 +3,12 @@ from lib.config.config_object import ConfigObject
 
 class Config:
 
-    def __init__(self, path, clean_up=False):
+    def __init__(self, path, clean_up=False, config_override: dict={}):
         self.config_path = pathlib.Path.cwd().joinpath(path)
         self.config = None
         self.__read_config()
+        self.__config_override(config_override)
+        self.__serialize_config()
         self.debug = self.config['debug'] if 'debug' in self.config else False
         self.output_path = Paths(self.config['output_path'])
         self.params = Params(self.config['params'])
@@ -22,7 +24,27 @@ class Config:
     def __clean_up(self):
         if self.output_path.main_folder.exists():
             shutil.rmtree(self.output_path.main_folder)
-        
+
+    def __config_override(self, override: dict) -> dict:
+        for key, value in override.items():
+            if key in self.config:
+                if type(self.config[key]) == dict:
+                    for k, v in value.items():
+                        if k in self.config[key]:
+                            self.config[key][k] = v
+                        else:
+                            raise Exception('Invalid config override key.')
+                else:
+                    self.config[key] = value
+            else:
+                raise Exception('Invalid config override key.')
+        return self.config
+    
+    def __serialize_config(self) -> None:
+        for key, value in self.config.items():
+                setattr(self, key, value)
+        return
+
     def __create_output_path(self) -> None:
         self.output_path.main_folder.mkdir(parents=True, exist_ok=True)
         for key, value in self.output_path.config.items():
@@ -41,8 +63,6 @@ class Config:
     def __read_config(self) -> None:
         try:
             self.config = yaml.load(open(self.config_path, "r"), Loader=yaml.FullLoader)
-            for key, value in self.config.items():
-                setattr(self, key, value)
         except Exception as e:
             raise
         if 'output_path' not in self.config:

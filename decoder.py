@@ -6,7 +6,6 @@ from lib.utils.differential import frame_differential_decoding
 from lib.utils.entropy import reording_decoding, rle_decoding, array_exp_golomb_decoding
 from lib.utils.enums import TypeMarker
 from lib.utils.misc import bytes_to_binstr
-import pathlib
 import numpy as np
 import time
 
