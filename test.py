@@ -46,5 +46,40 @@ a[:, :, 0] = [
     [132 133 134 135 136 137 138 139 140 141 142 143]
 ]
 """
-c = Config('config.yaml')
-print(c)
+c = [
+    [
+        [
+            {'i': 8, 'i_period': 1, 'qp': 0, 'size': 4502880, 'psnr': 47.22449596607491, 'time': 5.87453293800354}, 
+            {'i': 8, 'i_period': 1, 'qp': 3, 'size': 1706960, 'psnr': 39.160911314552685, 'time': 4.759721040725708}, 
+            {'i': 8, 'i_period': 1, 'qp': 6, 'size': 374880, 'psnr': 30.478749009585385, 'time': 4.189889192581177}, 
+            {'i': 8, 'i_period': 1, 'qp': 9, 'size': 55840, 'psnr': 20.24338696428075, 'time': 4.0775227546691895}
+        ], [
+            {'i': 8, 'i_period': 4, 'qp': 0, 'size': 4502880, 'psnr': 47.22449596607491, 'time': 4.905811786651611}, 
+            {'i': 8, 'i_period': 4, 'qp': 3, 'size': 1706960, 'psnr': 39.160911314552685, 'time': 4.8881471157073975}, 
+            {'i': 8, 'i_period': 4, 'qp': 6, 'size': 374880, 'psnr': 30.478749009585385, 'time': 4.947271108627319}, 
+            {'i': 8, 'i_period': 4, 'qp': 9, 'size': 55840, 'psnr': 20.24338696428075, 'time': 3.986860990524292}
+        ], [
+            {'i': 8, 'i_period': 10, 'qp': 0, 'size': 4502880, 'psnr': 47.22449596607491, 'time': 4.890838146209717}, 
+            {'i': 8, 'i_period': 10, 'qp': 3, 'size': 1706960, 'psnr': 39.160911314552685, 'time': 4.226339101791382}, 
+            {'i': 8, 'i_period': 10, 'qp': 6, 'size': 374880, 'psnr': 30.478749009585385, 'time': 4.954121828079224}, 
+            {'i': 8, 'i_period': 10, 'qp': 9, 'size': 55840, 'psnr': 20.24338696428075, 'time': 4.099496841430664}
+        ]
+    ]
+]
+
+config = Config('config.yaml')
+mv_path = config.output_path.mv_folder
+residual_path = config.output_path.residual_folder
+original_path = config.output_path.original_folder
+reconstructed_path = config.output_path.reconstructed_folder
+video_name = config.input.split('/')[-1]
+video_path = config.statistics.path.joinpath(video_name)
+
+total_size = 0
+for j in range(10):
+    mv_file = mv_path.joinpath('{}'.format(j))
+    print(mv_file.stat().st_size)
+    qtc_file = residual_path.joinpath('{}'.format(j))
+    print(qtc_file.stat().st_size)
+    total_size += mv_file.stat().st_size * 8 + qtc_file.stat().st_size * 8
+print(total_size)
