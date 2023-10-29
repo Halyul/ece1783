@@ -326,7 +326,7 @@ if __name__ == '__main__':
         size_original = len(original_file_lines) * 8
         size_array.append(size_compressed)
         size_original_array.append(size_original)
-    compression_ratio = sum(size_array)/sum(size_original_array)
+    compression_ratio = (sum(size_original_array) - sum(size_array))/sum(size_original_array)
 
     print(f'compression ratio is {str(compression_ratio)}')
     print(f'average_psnr: {sum(array[:, 2])/len(array[:, 2])}')
