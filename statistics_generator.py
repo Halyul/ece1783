@@ -290,6 +290,7 @@ if __name__ == '__main__':
 
     results.sort(key=lambda x: x[0])
     array = np.array(results)
+    
 
     plt.plot(array[:, 0], array[:, 1])
     plt.xlabel('frame index')
@@ -313,13 +314,24 @@ if __name__ == '__main__':
     plt.clf()
 
     size_array = []
+    size_original_array = []
     for i in range(total_frames):
         mv_file = mv_path.joinpath('{}'.format(i))
         mv_file_lines = mv_file.read_bytes()
         qtc_file = residual_path.joinpath('{}'.format(i))
         qtc_file_lines = qtc_file.read_bytes()
-        size = len(mv_file_lines) * 8 + len(qtc_file_lines) * 8
-        size_array.append(size)
+        original_file = original_path.joinpath('{}'.format(i))
+        original_file_lines = original_file.read_bytes()
+        size_compressed = len(mv_file_lines) * 8 + len(qtc_file_lines) * 8
+        size_original = len(original_file_lines) * 8
+        size_array.append(size_compressed)
+        size_original_array.append(size_original)
+    compression_ratio = sum(size_array)/sum(size_original_array)
+
+    print(f'compression ratio is {str(compression_ratio)}')
+    print(f'average_psnr: {sum(array[:, 2])/len(array[:, 2])}')
+
+
 
     plt.plot(array[:, 0], size_array, marker='o')
     plt.xlabel('frame index')
