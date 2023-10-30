@@ -202,30 +202,30 @@ if __name__ == '__main__':
     params_qp = int(l[4])
     q_matrix = quantization_matrix(params_i, params_qp)
 
-    residual_jobs = []
-    for i in range(1, total_frames):
-        job = pool.apply_async(func=residual_parallel_helper, args=(
-            original_path,
-            residual_path,
-            i,
-            height,
-            width,
-            residual_pngs_path,
-            params_i,
-            q_matrix,
-        ))
-        residual_jobs.append(job)
+    # residual_jobs = []
+    # for i in range(1, total_frames):
+    #     job = pool.apply_async(func=residual_parallel_helper, args=(
+    #         original_path,
+    #         residual_path,
+    #         i,
+    #         height,
+    #         width,
+    #         residual_pngs_path,
+    #         params_i,
+    #         q_matrix,
+    #     ))
+    #     residual_jobs.append(job)
 
-    predicted_job = pool.apply_async(func=predicted_frame_parallel_helper, args=(
-        total_frames,
-        residual_path,
-        reconstructed_path,
-        predicted_pngs_path,
-        height,
-        width,
-        params_i,
-        q_matrix,
-    ))
+    # predicted_job = pool.apply_async(func=predicted_frame_parallel_helper, args=(
+    #     total_frames,
+    #     residual_path,
+    #     reconstructed_path,
+    #     predicted_pngs_path,
+    #     height,
+    #     width,
+    #     params_i,
+    #     q_matrix,
+    # ))
 
     mae_list = mae_file.read_text().split('\n')
     mae_dict = {}
@@ -276,38 +276,12 @@ if __name__ == '__main__':
     plt.savefig(params_i_period_path.joinpath('ssim.png'))
     plt.clf()
 
-    size_array = []
-    for i in range(total_frames):
-        mv_file = mv_path.joinpath('{}'.format(i))
-        mv_file_lines = mv_file.read_bytes()
-        qtc_file = residual_path.joinpath('{}'.format(i))
-        qtc_file_lines = qtc_file.read_bytes()
-        size = len(mv_file_lines) * 8 + len(qtc_file_lines) * 8
-        size_array.append(size)
+    np.savetxt(statistics_file, array, delimiter=',', header='frame_index,mae,psnr,ssim', comments='')
 
-    plt.plot(array[:, 0], size_array, marker='o')
-    plt.xlabel('frame index')
-    plt.ylabel('bit-count')
-    plt.title('i={}, qp={}, i_period={}\n{}'.format(params_i, params_qp, params_i_period, video_name))
-    plt.xticks(array[:, 0])
-    plt.savefig(params_i_period_path.joinpath('bit-count.png'))
-    plt.clf()
+    # for job in residual_jobs:
+    #     job.get()
 
-    combined_array = np.column_stack((size_array, array[:, 2]))
-    combined_array = combined_array[combined_array[:, 0].argsort()]
-    plt.plot(combined_array[:, 0], combined_array[:, 1], marker='o')
-    plt.xlabel('bit-count')
-    plt.ylabel('psnr')
-    plt.title('i={}, r={}, qp={}, i_period={}\n{}'.format(params_i, params_r, params_qp, params_i_period, video_name))
-    plt.savefig(params_i_period_path.joinpath('bit-count_psnr_discrete.png'))
-    plt.clf()
-
-    np.savetxt(statistics_file, np.column_stack((array, size_array)), delimiter=',', header='frame_index,mae,psnr,ssim,mv_qtc_size', comments='')
-
-    for job in residual_jobs:
-        job.get()
-
-    predicted_job.get()
+    # predicted_job.get()
 
     pool.close()
     pool.join()
