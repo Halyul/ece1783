@@ -97,6 +97,8 @@ class Params(ConfigObject):
         """
         if 'qp' in self.config and not (0 <= self.qp <= (math.log2(self.i) + 7)):
             raise Exception('Invalid qp value.')
+        if 'nRefFrames' in self.config and not (1 <= self.nRefFrames <= 4):
+            raise Exception('Invalid nRefFrames value.')
         return
     
 class Decoder(ConfigObject):

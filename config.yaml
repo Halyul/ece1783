@@ -20,6 +20,10 @@ params:
   stop_at: 10 # stop after processing how many frames, -1 to disable
   qp: 3
   i_period: 4
+  nRefFrames: 4 # 1, 2, 3, 4
+  VBSEnable: false # true, false
+  FMEEnable: false # true, false
+  FastME: true # true, false
 
 statistics:
   path: statistics

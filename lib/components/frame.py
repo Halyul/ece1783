@@ -147,15 +147,28 @@ def extend_block(original_top_left: tuple, params_i: int, margin: tuple, shape: 
 
 class Frame:
 
-    def __init__(self, index: int, height: int, width: int, params_i: int=1, is_intraframe: bool=False, data: np.ndarray=None, prev: Literal['Frame']=None):
-        self.index = index
-        self.height = height
-        self.width = width
-        self.shape = (height, width)
-        self.prev = prev
-        self.raw = data
-        self.params_i = params_i
-        self.is_intraframe = is_intraframe
+    def __init__(self, index: int=-1, height: int=0, width: int=0, params_i: int=1, is_intraframe: bool=False, data: np.ndarray=None, prev: Literal['Frame']=None, frame=None):
+        if frame is None:
+            self.index = index
+            self.height = height
+            self.width = width
+            self.shape = (height, width)
+            self.prev = prev
+            self.raw = data
+            self.params_i = params_i
+            self.is_intraframe = is_intraframe
+        else:
+            self.__copy(frame)
+
+    def __copy(self, frame):
+        self.index = frame.index
+        self.height = frame.height
+        self.width = frame.width
+        self.shape = frame.shape
+        self.prev = frame.prev
+        self.raw = frame.raw
+        self.params_i = frame.params_i
+        self.is_intraframe = frame.is_intraframe
 
     def read_from_file(self, file_path: pathlib.Path, dtype=np.uint8):
         """
@@ -166,7 +179,6 @@ class Frame:
                 dtype (np.dtype): The data type to read as.
         """
         self.raw = np.fromfile(file_path, dtype=dtype).reshape(self.height, self.width)
-        self.prev = Frame(self.index - 1, self.height, self.width, data=np.full(self.height*self.width, 128).reshape(self.height, self.width))
 
     def read_prev_from_file(self, file_path: pathlib.Path, index: int, dtype=np.uint8):
         """

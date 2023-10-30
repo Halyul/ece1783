@@ -12,7 +12,7 @@ from lib.components.mv import MotionVector, MotionVectorFrame
     Parameters:
         block (np.ndarray): The block.
         block_coor (tuple): The top left coordinates of block.
-        search_window (np.ndarray): The search window.
+        search_windows (list): A list of search windows.
         search_window_coor (tuple): The top left coordinates of search window.
         params_i (int): The block size.
     
@@ -21,43 +21,45 @@ from lib.components.mv import MotionVector, MotionVectorFrame
         min_motion_vector (tuple): The motion vector (y, x).
         min_block (np.ndarray): The block from the search window.
 """
-def calc_motion_vector(block: np.ndarray, block_coor: tuple, search_window: np.ndarray, search_window_coor: tuple, params_i: int) -> tuple:
+def calc_motion_vector(block: np.ndarray, block_coor: tuple, search_windows: list, search_window_coor: tuple, params_i: int) -> tuple:
     min_motion_vector = None
     min_yx = None
     block_reshaped = block.reshape(params_i * params_i)
     min_block = None
-    for y in range(0, search_window.shape[0] - params_i + 1):
-        actual_y = y + search_window_coor[0]
-        for x in range(0, search_window.shape[1] - params_i + 1):
-            actual_x = x + search_window_coor[1]
-            a = search_window[y:params_i + y, x:params_i + x]
-            b = a.reshape(params_i * params_i)
-            motion_vector = MotionVector(actual_y - block_coor[0], actual_x - block_coor[1], np.abs(b - block_reshaped).mean())
-            if min_motion_vector == None:
-                min_motion_vector = motion_vector
-                min_yx = (actual_y, actual_x)
-                min_block = a
-            elif motion_vector.mae < min_motion_vector.mae:
-                min_motion_vector = motion_vector
-                min_yx = (actual_y, actual_x)
-                min_block = a
-            elif motion_vector.mae == min_motion_vector.mae:
-                current_min_l1_norm = min_motion_vector.l1_norm()
-                new_min_l1_norm = motion_vector.l1_norm()
-                if new_min_l1_norm < current_min_l1_norm:
+    for search_windows_index in range(len(search_windows)):
+        search_window = search_windows[search_windows_index]
+        for y in range(0, search_window.shape[0] - params_i + 1):
+            actual_y = y + search_window_coor[0]
+            for x in range(0, search_window.shape[1] - params_i + 1):
+                actual_x = x + search_window_coor[1]
+                a = search_window[y:params_i + y, x:params_i + x]
+                b = a.reshape(params_i * params_i)
+                motion_vector = MotionVector(actual_y - block_coor[0], actual_x - block_coor[1], ref_offset=search_windows_index, mae=np.abs(b - block_reshaped).mean())
+                if min_motion_vector == None:
                     min_motion_vector = motion_vector
                     min_yx = (actual_y, actual_x)
                     min_block = a
-                elif new_min_l1_norm == current_min_l1_norm:
-                    if actual_y < min_yx[0]:
+                elif motion_vector.mae < min_motion_vector.mae:
+                    min_motion_vector = motion_vector
+                    min_yx = (actual_y, actual_x)
+                    min_block = a
+                elif motion_vector.mae == min_motion_vector.mae:
+                    current_min_l1_norm = min_motion_vector.l1_norm()
+                    new_min_l1_norm = motion_vector.l1_norm()
+                    if new_min_l1_norm < current_min_l1_norm:
                         min_motion_vector = motion_vector
                         min_yx = (actual_y, actual_x)
                         min_block = a
-                    elif actual_y == min_yx[0]:
-                        if actual_x < min_yx[1]:
+                    elif new_min_l1_norm == current_min_l1_norm:
+                        if actual_y < min_yx[0]:
                             min_motion_vector = motion_vector
                             min_yx = (actual_y, actual_x)
                             min_block = a
+                        elif actual_y == min_yx[0]:
+                            if actual_x < min_yx[1]:
+                                min_motion_vector = motion_vector
+                                min_yx = (actual_y, actual_x)
+                                min_block = a
 
     return min_motion_vector, min_block
 
@@ -107,10 +109,10 @@ def intraframe_prediction(frame: Frame, q_matrix: np.ndarray) -> tuple:
 
             predictor_block = None
             if ver_mae < hor_mae:
-                predictor_dump.append(MotionVector(Intraframe.VERTICAL.value, -1, ver_mae))
+                predictor_dump.append(MotionVector(Intraframe.VERTICAL.value, -1, mae=ver_mae))
                 predictor_block = ver_block
             else:
-                predictor_dump.append(MotionVector(Intraframe.HORIZONTAL.value, -1, hor_mae))
+                predictor_dump.append(MotionVector(Intraframe.HORIZONTAL.value, -1, mae=hor_mae))
                 predictor_block = hor_block
 
             qtc_block = QTCBlock(block=current_block - predictor_block, q_matrix=q_matrix)
@@ -151,9 +153,13 @@ def mv_parallel_helper(index: int, frame: Frame, params_r: int, q_matrix: np.nda
 
         top_left, bottom_right = extend_block(centered_top_left, frame.params_i, (params_r, params_r, params_r, params_r), frame.shape)
         
-        search_window = frame.prev.raw[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
-
-        min_motion_vector, min_block = calc_motion_vector(centered_block, centered_top_left, search_window, top_left, frame.params_i)
+        current_frame = frame
+        search_windows = []
+        while current_frame.prev is not None:
+            search_window = current_frame.prev.raw[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
+            search_windows.append(search_window)
+            current_frame = current_frame.prev
+        min_motion_vector, min_block = calc_motion_vector(centered_block, centered_top_left, search_windows, top_left, frame.params_i)
 
         qtc_block = QTCBlock(block=centered_block - min_block, q_matrix=q_matrix)
         qtc_block.block_to_qtc()
@@ -174,10 +180,15 @@ def mv_parallel_helper(index: int, frame: Frame, params_r: int, q_matrix: np.nda
         q_matrix (np.ndarray): The quantization matrix.
         reconstructed_path (Path): The path to write the reconstructed frame to.
         pool (Pool): The pool of processes.
+
+    Returns:
+        frame (Frame): The current reconstructed frame.
+        mv_dump (MotionVectorFrame): The motion vectors.
+        qtc_block_dump (QTCFrame): The quantized transformed coefficients.
 """
-def calc_motion_vector_parallel_helper(frame: Frame, params_r: int, q_matrix: np.ndarray, reconstructed_path: Path, pool: Pool) -> None:
+def calc_motion_vector_parallel_helper(frame: Frame, params_r: int, q_matrix: np.ndarray, reconstructed_path: Path, pool: Pool) -> tuple:
     print("Processing", frame.index)
-    if frame.prev.index + 1 != frame.index:
+    if (frame.is_intraframe is False and frame.prev is None) or ((frame.prev is not None) and (frame.prev.index + 1 != frame.index)):
         raise Exception('Frame index mismatch. Current: {}, Previous: {}'.format(frame.index, frame.prev.index))
     
     if frame.is_intraframe:
@@ -210,11 +221,11 @@ def calc_motion_vector_parallel_helper(frame: Frame, params_r: int, q_matrix: np
             mv_dump.append_list(index, result[2])
             reconstructed_block_dump[index] = result[3]
         
-        current_reconstructed_frame = Frame(index, frame.height, frame.width, params_i=frame.params_i)
+        current_reconstructed_frame = Frame(frame=frame)
         current_reconstructed_frame.block_to_pixel(np.array(reconstructed_block_dump))
 
     current_reconstructed_frame.convert_within_range()
 
     current_reconstructed_frame.dump(reconstructed_path.joinpath('{}'.format(frame.index)))
     
-    return frame.index, mv_dump, qtc_block_dump
+    return current_reconstructed_frame, mv_dump, qtc_block_dump

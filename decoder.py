@@ -62,7 +62,10 @@ def construct_reconstructed_frame(mv_dump, frame, residual_frame) -> np.ndarray:
             predicted_frame_dump.append([])
             for j in range(len(mv_dump.raw[i])):
                 top_left = mv_dump.raw[i][j].raw
-                predicted_frame_dump[i].append(frame.prev.raw[y_counter + top_left[0]:y_counter + top_left[0] + params_i, x_counter + top_left[1]:x_counter + top_left[1] + params_i])
+                current_frame = frame.prev
+                for _ in range(mv_dump.raw[i][j].ref_offset):
+                    current_frame = current_frame.prev
+                predicted_frame_dump[i].append(current_frame.raw[y_counter + top_left[0]:y_counter + top_left[0] + params_i, x_counter + top_left[1]:x_counter + top_left[1] + params_i])
                 x_counter += params_i
             y_counter += params_i
             x_counter = 0
@@ -88,29 +91,44 @@ if __name__ == '__main__':
     height, width = int(l[1]), int(l[2])
     params_i = int(l[3])
     params_qp = int(l[4])
+    nRefFrames = int(l[5])
     q_matrix = quantization_matrix(params_i, params_qp)
-
-    for i in range(total_frames):
-        mv_file = mv_path.joinpath('{}'.format(i))
+    read_frame_counter = 0
+    prev_frame = None
+    while read_frame_counter < total_frames:
+        mv_file = mv_path.joinpath('{}'.format(read_frame_counter))
         mv_dump = MotionVectorFrame()
         mv_dump.read_from_file(mv_file, width, params_i)
 
-        frame = Frame(i, height, width, params_i, mv_dump.is_intraframe)
+        frame = Frame(read_frame_counter, height, width, params_i, mv_dump.is_intraframe)
         if not mv_dump.is_intraframe:
-            prev_index = i - 1
-            frame.read_prev_from_file(output_path.joinpath('{}'.format(prev_index)), prev_index)
-            frame.prev.convert_type(np.int16)
+            frame.prev = prev_frame
 
-        qtc_file = residual_path.joinpath('{}'.format(i))
+        qtc_file = residual_path.joinpath('{}'.format(read_frame_counter))
         qtc_frame = QTCFrame(params_i=params_i)
         qtc_frame.read_from_file(qtc_file, q_matrix, width)
         residual_frame = qtc_frame.to_residual_frame()
 
         frame = construct_reconstructed_frame(mv_dump, frame, residual_frame)
         frame.convert_within_range()
-        frame.dump(output_path.joinpath('{}'.format(i)))
+        frame.dump(output_path.joinpath('{}'.format(read_frame_counter)))
 
-        print("reconstructed frame {} written".format(i))
+        frame.prev = prev_frame
+        prev_frame = frame
+        if not frame.is_intraframe:
+            prev_pointer = prev_frame
+            prev_counter = 0
+            while prev_pointer.prev is not None:
+                if prev_counter == nRefFrames - 1:
+                    prev_pointer.prev = None
+                    break
+                else:
+                    prev_counter += 1
+                prev_pointer = prev_pointer.prev
+
+
+        print("reconstructed frame {} written".format(read_frame_counter))
+        read_frame_counter += 1
 
     end = time.time()
     print('Time: {}s'.format(end - start))

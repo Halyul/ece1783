@@ -4,9 +4,10 @@ from lib.enums import Intraframe, TypeMarker
 
 class MotionVector:
 
-    def __init__(self, y, x, mae=0):
+    def __init__(self, y, x, ref_offset = 0, mae=0):
         self.y = y
         self.x = x
+        self.ref_offset = ref_offset
         self.mae = mae
         self.raw = (self.y, self.x)
 
@@ -20,10 +21,10 @@ class MotionVector:
         return abs(self.y) + abs(self.x)
 
     def __add__(self, other):
-        return MotionVector(self.y + other.y, self.x + other.x)
+        return MotionVector(self.y + other.y, self.x + other.x, self.ref_offset + other.ref_offset)
     
     def __sub__(self, other):
-        return MotionVector(self.y - other.y, self.x - other.x)
+        return MotionVector(self.y - other.y, self.x - other.x, self.ref_offset - other.ref_offset)
     
 class MotionVectorFrame:
 
@@ -93,7 +94,7 @@ class MotionVectorFrame:
                 if self.is_intraframe:
                     text += '{}'.format(exp_golomb_encoding(diff_mv.y))
                 else:
-                    text += '{}{}'.format(exp_golomb_encoding(diff_mv.y), exp_golomb_encoding(diff_mv.x))
+                    text += '{}{}{}'.format(exp_golomb_encoding(diff_mv.y), exp_golomb_encoding(diff_mv.x), exp_golomb_encoding(diff_mv.ref_offset))
         return binstr_to_bytes(text)
 
     def read_from_file(self, path: pathlib.Path, width: int, params_i: int):
@@ -128,10 +129,10 @@ class MotionVectorFrame:
                 if mv_counter == width // params_i:
                     mv_counter = 0
         else:
-            for j in range(0, len(mv), 2):
+            for j in range(0, len(mv), 3):
                 if mv_counter == 0:
                     self.new_row()
-                current_mv = prev_mv + MotionVector(mv[j], mv[j + 1])
+                current_mv = prev_mv + MotionVector(mv[j], mv[j + 1], mv[j + 2])
                 self.append(current_mv)
                 prev_mv = current_mv
                 mv_counter += 1

@@ -82,6 +82,7 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
         pool.join()
         return
     jobs = []
+    prev_frame = None
     while run_flag:
         file = config.output_path.original_folder.joinpath(str(counter))
         while not file.exists():
@@ -92,17 +93,23 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
         frame.read_from_file(file)
         frame.convert_type(np.int16)
         reconstructed_path = config.output_path.reconstructed_folder
-        if frame.index != 0:
-            prev_index = frame.index - 1
-            prev_file = reconstructed_path.joinpath(str(prev_index))
-            while not prev_file.exists():
-                print("Waiting for reconstructed file {} to be written".format(prev_index))
-                time.sleep(1)
-                continue
-            frame.read_prev_from_file(prev_file, prev_index)
-            frame.prev.convert_type(np.int16)
-        index, mv_dump, qtc_block_dump = calc_motion_vector_parallel_helper(frame, config.params.r, q_matrix, reconstructed_path, pool)
-        job = pool.apply_async(func=write_data_dispatcher, args=((index, mv_dump, qtc_block_dump), config,))
+        if not frame.is_intraframe:
+            frame.prev = prev_frame
+        prev_frame, mv_dump, qtc_block_dump = calc_motion_vector_parallel_helper(frame, config.params.r, q_matrix, reconstructed_path, pool)
+
+        if not frame.is_intraframe:
+            nRefFrames = config.params.nRefFrames
+            prev_pointer = prev_frame
+            prev_counter = 0
+            while prev_pointer.prev is not None:
+                if prev_counter == nRefFrames - 1:
+                    prev_pointer.prev = None
+                    break
+                else:
+                    prev_counter += 1
+                prev_pointer = prev_pointer.prev
+
+        job = pool.apply_async(func=write_data_dispatcher, args=((frame.index, mv_dump, qtc_block_dump), config,))
         jobs.append(job)
         counter += 1
         if meta_file.exists():
