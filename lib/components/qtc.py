@@ -91,6 +91,15 @@ class QTCBlock:
         """
         self.__qtc_to_block()
 
+    """
+        Return the block by default for numpy operations.
+
+        Returns:
+            np.ndarray: The block.
+    """
+    def __array__(self):
+        return self.block
+
 class QTCFrame:
     
     def __init__(self, params_i: int= 1, length=0):
@@ -157,7 +166,7 @@ class QTCFrame:
                     self.new_row()
                 qtc_block = QTCBlock(qtc_block=np.array(self.reording_decoding(self.rle_decoding(qtc_pending, q_matrix.shape), q_matrix.shape)).astype(int), q_matrix=q_matrix)
                 qtc_block.qtc_to_block()
-                self.append(qtc_block.block) # CAUTION: the format is different
+                self.append(qtc_block)
                 qtc_pending = []
                 qtc_counter += 1
                 if qtc_counter == width // self.params_i:
