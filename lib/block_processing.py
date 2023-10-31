@@ -7,6 +7,23 @@ from lib.components.qtc import QTCBlock, QTCFrame
 from lib.components.mv import MotionVector, MotionVectorFrame
 
 """
+    Nearest Neighbors search is a requirement, with MVP being the MV of the latest encoded block (MVP =(0,0) for first block in every row of (𝑖 × 𝑖) blocks). Note: any candidate block that partially or fully exists outside of the frame is not searched. Lecture 6
+
+    Parameters:
+        block (np.ndarray): The block.
+        block_coor (tuple): The top left coordinates of block.
+        search_windows (list): A list of search windows.
+        search_window_coor (tuple): The top left coordinates of search window.
+        params_i (int): The block size.
+    
+    Returns:
+        min_motion_vector (MotionVector): The motion vector object.
+        min_block (np.ndarray): The block from the search window.
+"""
+def calc_fast_motion_vector(block: np.ndarray, block_coor: tuple, search_windows: list, search_window_coor: tuple, params_i: int) -> tuple:
+    pass
+
+"""
     Calculate the motion vector for a block from the search window.
 
     Parameters:
@@ -17,11 +34,10 @@ from lib.components.mv import MotionVector, MotionVectorFrame
         params_i (int): The block size.
     
     Returns:
-        min_mae (int): The minimum mean absolute error.
-        min_motion_vector (tuple): The motion vector (y, x).
+        min_motion_vector (MotionVector): The motion vector object.
         min_block (np.ndarray): The block from the search window.
 """
-def calc_motion_vector(block: np.ndarray, block_coor: tuple, search_windows: list, search_window_coor: tuple, params_i: int) -> tuple:
+def calc_full_range_motion_vector(block: np.ndarray, block_coor: tuple, search_windows: list, search_window_coor: tuple, params_i: int) -> tuple:
     min_motion_vector = None
     min_yx = None
     block_reshaped = block.reshape(params_i * params_i)
@@ -159,7 +175,7 @@ def mv_parallel_helper(index: int, frame: Frame, params_r: int, q_matrix: np.nda
             search_window = current_frame.prev.raw[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
             search_windows.append(search_window)
             current_frame = current_frame.prev
-        min_motion_vector, min_block = calc_motion_vector(centered_block, centered_top_left, search_windows, top_left, frame.params_i)
+        min_motion_vector, min_block = calc_full_range_motion_vector(centered_block, centered_top_left, search_windows, top_left, frame.params_i)
 
         qtc_block = QTCBlock(block=centered_block - min_block, q_matrix=q_matrix)
         qtc_block.block_to_qtc()

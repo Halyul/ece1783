@@ -145,6 +145,12 @@ def extend_block(original_top_left: tuple, params_i: int, margin: tuple, shape: 
     
     return top_left, bottom_right
 
+"""
+    RDO Equations – Lagrange Multiplier Optimization. Lecture 5
+"""
+def rdo():
+    pass
+
 class Frame:
 
     def __init__(self, index: int=-1, height: int=0, width: int=0, params_i: int=1, is_intraframe: bool=False, data: np.ndarray=None, prev: Literal['Frame']=None, frame=None):

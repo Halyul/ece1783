@@ -99,6 +99,15 @@ class Params(ConfigObject):
             raise Exception('Invalid qp value.')
         if 'nRefFrames' in self.config and not (1 <= self.nRefFrames <= 4):
             raise Exception('Invalid nRefFrames value.')
+        if 'VBSEnable' in self.config and self.i < 4:
+            # enabled when the block size is power of 2
+            n = self.i
+            while (n != 1):
+                    if (n % 2 != 0):
+                        self.VBSEnable = False
+                        print('VBS cannot be enabled when the block size is not power of 2.')
+                    n = n // 2
+            self.VBSEnable = True
         return
     
 class Decoder(ConfigObject):
