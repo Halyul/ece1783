@@ -23,7 +23,7 @@ params:
   nRefFrames: 2 # 1, 2, 3, 4
   VBSEnable: true # true, false
   FMEEnable: false # true, false
-  FastME: true # true, false
+  FastME: false # true, false
 
 statistics:
   path: statistics

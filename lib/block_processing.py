@@ -8,6 +8,12 @@ from lib.components.qtc import QTCBlock, QTCFrame, quantization_matrix
 from lib.components.mv import MotionVector, MotionVectorFrame
 from lib.enums import VBSMarker
 
+def calculate_mv_dispatcher(params: Params, *args, **kwargs):
+    if params.FastME:
+        return calc_fast_motion_vector(*args, **kwargs)
+    else:
+        return calc_full_range_motion_vector(*args, **kwargs)
+
 def rdo(original_block: np.ndarray, reconstructed_block: np.ndarray, qtc_block: QTCBlock, mv: MotionVector, params_qp: int, is_intraframe=False):
     lambda_value = 0.5 ** ((params_qp - 12) / 3) * 0.85
     sad_value = np.abs(original_block - reconstructed_block).sum()
@@ -38,7 +44,7 @@ def interframe_vbs(coor_offset: tuple, original_block: np.ndarray, original_sear
         for original_search_window in original_search_windows:
             search_window = original_search_window[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
             search_windows.append(search_window)
-        min_motion_vector, min_block = calc_full_range_motion_vector(centered_subblock, top_left_in_search_window, search_windows, top_left, subblock_params_i)
+        min_motion_vector, min_block = calculate_mv_dispatcher(params, centered_subblock, top_left_in_search_window, search_windows, top_left, subblock_params_i)
         qtc_subblock = QTCBlock(block=centered_subblock - min_block, q_matrix=q_matrix)
         qtc_subblock.block_to_qtc()
         residual_subblocks.append(qtc_subblock.block)
@@ -327,7 +333,7 @@ def mv_parallel_helper(index: int, frame: Frame, params: Params, q_matrix: np.nd
             search_window = current_frame.prev.raw[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
             search_windows.append(search_window)
             current_frame = current_frame.prev
-        min_motion_vector, min_block = calc_full_range_motion_vector(centered_block, centered_top_left, search_windows, top_left, frame.params_i)
+        min_motion_vector, min_block = calculate_mv_dispatcher(params, centered_block, centered_top_left, search_windows, top_left, frame.params_i)
 
         qtc_block = QTCBlock(block=centered_block - min_block, q_matrix=q_matrix)
         qtc_block.block_to_qtc()
