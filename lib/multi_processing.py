@@ -71,7 +71,6 @@ class MultiProcessingNew:
 """
 def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
     pool = mp.Pool(mp.cpu_count())
-
     q_matrix = quantization_matrix(config.params.i, config.params.qp)
     counter = 0
     run_flag = True
@@ -83,6 +82,7 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
         return
     jobs = []
     prev_frame = None
+    split_counters = []
     while run_flag:
         file = config.output_path.original_folder.joinpath(str(counter))
         while not file.exists():
@@ -95,7 +95,11 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
         reconstructed_path = config.output_path.reconstructed_folder
         if not frame.is_intraframe:
             frame.prev = prev_frame
-        prev_frame, mv_dump, qtc_block_dump = calc_motion_vector_parallel_helper(frame, config.params, q_matrix, reconstructed_path, pool)
+        prev_frame, mv_dump, qtc_block_dump, split_counter = calc_motion_vector_parallel_helper(frame, config.params, q_matrix, reconstructed_path, pool)
+        split_counters.append(dict(
+            index=counter,
+            counter=split_counter,
+        ))
 
         if not frame.is_intraframe:
             nRefFrames = config.params.nRefFrames
@@ -117,6 +121,11 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
             last = int(l[0])
             if counter == last:
                 run_flag = False
+
+    with config.output_path.split_counter_file.open('a') as f:
+        total_blocks = (height // config.params.i) * (width // config.params.i)
+        for split_counter in split_counters:
+            f.write("{} {}\n".format(split_counter['index'], split_counter['counter'] / total_blocks * 100))
 
     for job in jobs: 
         job.get()

@@ -228,6 +228,7 @@ def intraframe_prediction(frame: Frame, q_matrix: np.ndarray, params: Params) ->
     y_counter = 0
     x_counter = 0
     prev_predictor = None
+    split_counter = 0
     for y in range(0, height, frame.params_i):
         predictor_dump.new_row()
         qtc_block_dump.new_row()
@@ -280,7 +281,8 @@ def intraframe_prediction(frame: Frame, q_matrix: np.ndarray, params: Params) ->
                         predictor=vbs_predictor,
                     )
                     prev_predictor = vbs_predictor[-1]
-                    # print('vbs used in Frame', frame.index, current_coor)
+                    split_counter += 1
+                    print('vbs used in Frame', frame.index, current_coor)
                 else:
                     qtc_block = dict(
                         vbs=VBSMarker.UNSPLIT,
@@ -297,7 +299,7 @@ def intraframe_prediction(frame: Frame, q_matrix: np.ndarray, params: Params) ->
             x_counter += 1
         y_counter += 1
         x_counter = 0
-    return (qtc_block_dump, predictor_dump, reconstructed_block_dump)
+    return (qtc_block_dump, predictor_dump, reconstructed_block_dump, split_counter)
 
 """
     Helper function to calculate the motion vector, residual blocks, and mae values.
@@ -321,6 +323,7 @@ def mv_parallel_helper(index: int, frame: Frame, params: Params, q_matrix: np.nd
     mv_dump = []
     reconstructed_block_dump = []
     prev_motion_vector = None
+    split_counter = 0
     for x in range(0, frame.width, frame.params_i):
         centered_top_left = (y, x)
         centered_block = frame.raw[centered_top_left[0]:centered_top_left[0] + frame.params_i, centered_top_left[1]:centered_top_left[1] + frame.params_i]
@@ -355,7 +358,8 @@ def mv_parallel_helper(index: int, frame: Frame, params: Params, q_matrix: np.nd
                     predictor=vbs_mv,
                 )
                 prev_motion_vector = vbs_mv[-1]
-                # print('vbs used in Frame', frame.index, centered_top_left)
+                print('vbs used in Frame', frame.index, centered_top_left)
+                split_counter += 1
             else:
                 qtc_block = dict(
                     vbs=VBSMarker.UNSPLIT,
@@ -369,7 +373,7 @@ def mv_parallel_helper(index: int, frame: Frame, params: Params, q_matrix: np.nd
         qtc_block_dump.append(qtc_block)
         reconstructed_block_dump.append(reconstructed_block)
         mv_dump.append(min_motion_vector)
-    return (index, qtc_block_dump, mv_dump, reconstructed_block_dump)
+    return (index, qtc_block_dump, mv_dump, reconstructed_block_dump, split_counter)
 
 """
     Calculate the motion vector for a block from the search window in parallel.
@@ -392,7 +396,7 @@ def calc_motion_vector_parallel_helper(frame: Frame, params: Params, q_matrix: n
         raise Exception('Frame index mismatch. Current: {}, Previous: {}'.format(frame.index, frame.prev.index))
     
     if frame.is_intraframe:
-        qtc_block_dump, mv_dump, current_reconstructed_frame = intraframe_prediction(frame, q_matrix, params)
+        qtc_block_dump, mv_dump, current_reconstructed_frame, split_counter = intraframe_prediction(frame, q_matrix, params)
     else:
         jobs = []
         results = []
@@ -415,11 +419,13 @@ def calc_motion_vector_parallel_helper(frame: Frame, params: Params, q_matrix: n
         qtc_block_dump = QTCFrame(length=len(results), vbs_enable=params.VBSEnable)
         mv_dump = MotionVectorFrame(length=len(results), vbs_enable=params.VBSEnable)
         reconstructed_block_dump = [None] * len(results)
+        split_counter = 0
         for result in results:
             index = result[0]
             qtc_block_dump.append_list(index, result[1])
             mv_dump.append_list(index, result[2])
             reconstructed_block_dump[index] = result[3]
+            split_counter += result[4]
         
         current_reconstructed_frame = Frame(frame=frame)
         current_reconstructed_frame.block_to_pixel(reconstructed_block_dump)
@@ -428,4 +434,4 @@ def calc_motion_vector_parallel_helper(frame: Frame, params: Params, q_matrix: n
 
     current_reconstructed_frame.dump(reconstructed_path.joinpath('{}'.format(frame.index)))
     
-    return current_reconstructed_frame, mv_dump, qtc_block_dump
+    return current_reconstructed_frame, mv_dump, qtc_block_dump, split_counter

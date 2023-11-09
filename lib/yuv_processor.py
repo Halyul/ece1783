@@ -97,7 +97,6 @@ class YUVProcessor:
         self.__config.output_path.meta_file.write_text(str("{},{},{},{},{},{},{}".format(self.__frame_index, self.info['paded_height'], self.info['paded_width'], self.__config.params.i, self.__config.params.qp, self.__config.params.nRefFrames, int(self.__config.params.VBSEnable))))
 
         self.__mp.done()
-        return
     
     """
         Read the header of the YUV file.
