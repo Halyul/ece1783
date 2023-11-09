@@ -17,3 +17,7 @@ class Intraframe(Enum):
 class TypeMarker(Enum):
     I_FRAME = 1
     P_FRAME = 0
+
+class VBSMarker(Enum):
+    SPLIT = 1
+    UNSPLIT = 0

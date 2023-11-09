@@ -11,6 +11,8 @@ pyyaml = "*"
 matplotlib = "*"
 
 [dev-packages]
+pep8 = "*"
+pylint = "*"
 pandas = "*"
 
 [requires]

@@ -3,7 +3,114 @@ import numpy as np
 from scipy.fftpack import dct, idct
 from lib.utils.misc import binstr_to_bytes, bytes_to_binstr, array_exp_golomb_decoding, exp_golomb_encoding
 from lib.components.frame import Frame
+from lib.enums import VBSMarker
 
+def rle_encoding(array: list) -> list:
+    """
+        Run-length encoding.
+
+        Parameters:
+            array (list): The array to encode.
+
+        Returns:
+            list: The encoded array.
+    """
+    new_array = []
+    pending = []
+    counter = 0
+    for item in array:
+        if item == 0:
+            if counter < 0:
+                new_array.append(counter)
+                new_array += pending
+                pending = []
+                counter = 0
+            counter += 1
+        else:
+            if counter > 0:
+                new_array.append(counter)
+                counter = 0
+            counter -= 1
+            pending.append(item)
+    if len(pending) > 0:
+        new_array.append(counter)
+        new_array += pending
+    new_array.append(0)
+    return new_array
+
+def rle_decoding(array: list, shape: tuple) -> list:
+    """
+        Run-length decoding.
+
+        Parameters:
+            array (list): The array to decode.
+            shape (tuple): The shape of the matrix.
+
+        Returns:
+            list: The decoded array.
+    """
+    max_length = shape[0] * shape[1]
+    new_array = []
+    counter = 0
+    for i in range(len(array)):
+        item = array[i]
+        if counter == 0:
+            counter = item
+            if counter == 0:
+                offset = max_length - len(new_array)
+                if offset > 0:
+                    counter = offset
+            if counter > 0:
+                for i in range(counter):
+                    new_array.append(0)
+                counter = 0
+            continue
+        if counter < 0:
+            new_array.append(item)
+            counter += 1
+        else:
+            new_array.append(0)
+            counter -= 1
+    
+    return new_array
+
+def reording_encoding(qtc_dump: list) -> list:
+    """
+        Matrix reording encoding.
+
+        Parameters:
+            qtc_dump (list): The qtc dump to encode.
+
+        Returns:
+            list: The encoded qtc dump.
+    """
+    array = []
+    current = (0, 0)
+    row = 0
+    end = (len(qtc_dump), len(qtc_dump[0])) # (rows, columns)
+    for _ in range(end[0] * end[1]):
+        array.append(qtc_dump[current[0]][current[1]])
+        current, row = reordering_helper(end, current, row)
+    return array
+
+def reording_decoding(reordered_dump: list, shape: tuple) -> list:
+    """
+        Matrix reording decoding.
+
+        Parameters:
+            reordered_dump (list): The reordered dump to decode.
+            shape (tuple): The shape of the matrix.
+        
+        Returns:
+            list: The decoded qtc dump.
+    """
+    matrix = np.empty(shape, dtype=int)
+    current = (0, 0)
+    row = 0
+    for item in reordered_dump:
+        matrix[current[0], current[1]] = item
+        current, row = reordering_helper(shape, current, row)
+    return matrix
 
 def quantization_matrix(params_i: int, params_qp: int) -> np.ndarray:
     """
@@ -56,6 +163,7 @@ class QTCBlock:
         self.block = block
         self.q_matrix = q_matrix
         self.qtc_block = qtc_block
+        self.str = None
 
     def tc(self) -> np.ndarray:
         """
@@ -99,13 +207,19 @@ class QTCBlock:
     """
     def __array__(self):
         return self.block
+    
+    def to_str(self) -> str:
+        if self.str is None:
+            self.str = ''.join(exp_golomb_encoding(x) for x in rle_encoding(reording_encoding(self.qtc_block)))
+        return self.str
 
 class QTCFrame:
     
-    def __init__(self, params_i: int= 1, length=0):
+    def __init__(self, params_i: int= 1, length=0, vbs_enable=False):
         self.blocks = [None] * length
         self.shape = None
         self.params_i = params_i
+        self.vbs_enable = vbs_enable
 
     def new_row(self) -> None:
         """
@@ -140,12 +254,20 @@ class QTCFrame:
                 bytes: The QTC frame as bytes.
         """
         text = ''
-        for object in self.blocks:
-            for item in object:
-                text += ''.join(exp_golomb_encoding(x) for x in self.rle_encoding(self.reording_encoding(item.qtc_block)))
+        if self.vbs_enable:
+            for i in range(len(self.blocks)):
+                for j in range(len(self.blocks[i])):
+                    item = self.blocks[i][j]
+                    vbs = item['vbs']
+                    block = item['qtc_block']
+                    text += '{}{}'.format(exp_golomb_encoding(vbs.value), block.to_str())
+        else:
+            for object in self.blocks:
+                for item in object:
+                    text += item.to_str()
         return binstr_to_bytes(text)
     
-    def read_from_file(self, path: pathlib.Path, q_matrix: np.ndarray, width: int) -> None:
+    def read_from_file(self, path: pathlib.Path, q_matrix: np.ndarray, width: int, params_qp: int) -> None:
         """
             Read QTC Frame from file
 
@@ -159,18 +281,52 @@ class QTCFrame:
         qtc = array_exp_golomb_decoding(qtc)
         qtc_counter = 0
         qtc_pending = []
-        for item in qtc:
-            qtc_pending.append(item)
-            if item == 0:
-                if qtc_counter == 0:
-                    self.new_row()
-                qtc_block = QTCBlock(qtc_block=np.array(self.reording_decoding(self.rle_decoding(qtc_pending, q_matrix.shape), q_matrix.shape)).astype(int), q_matrix=q_matrix)
-                qtc_block.qtc_to_block()
-                self.append(qtc_block)
-                qtc_pending = []
-                qtc_counter += 1
-                if qtc_counter == width // self.params_i:
-                    qtc_counter = 0
+        index_counter = 0
+        while index_counter < len(qtc):
+            item = qtc[index_counter]
+            index_counter += 1
+            if self.vbs_enable:
+                vbs = VBSMarker(item)
+                item = -1
+                while item != 0:
+                    item = qtc[index_counter]
+                    index_counter += 1
+                    qtc_pending.append(item)
+                    if item == 0:
+                        if qtc_counter == 0:
+                            self.new_row()
+                        array = np.array(reording_decoding(rle_decoding(qtc_pending, q_matrix.shape), q_matrix.shape)).astype(int)
+                        if vbs is VBSMarker.SPLIT:
+                            subblock_params_i = self.params_i // 2
+                            sub_q_matrix = quantization_matrix(subblock_params_i, params_qp - 1 if params_qp > 0 else 0)
+                            top_lefts = [(y, x) for y in range(0, self.params_i, subblock_params_i) for x in range(0, self.params_i, subblock_params_i)]
+                            sub_qtc_blocks = []
+                            for centered_top_left in top_lefts:
+                                centered_subblock = array[centered_top_left[0]:centered_top_left[0] + subblock_params_i, centered_top_left[1]:centered_top_left[1] + subblock_params_i]
+                                qtc_block = QTCBlock(qtc_block=centered_subblock, q_matrix=sub_q_matrix)
+                                qtc_block.qtc_to_block()
+                                sub_qtc_blocks.append(qtc_block)
+                            qtc_block = QTCBlock(block=np.concatenate((np.concatenate((sub_qtc_blocks[0], sub_qtc_blocks[1]), axis=1), np.concatenate((sub_qtc_blocks[2], sub_qtc_blocks[3]), axis=1)), axis=0), qtc_block=array)
+                        else:
+                            qtc_block = QTCBlock(qtc_block=array, q_matrix=q_matrix)
+                            qtc_block.qtc_to_block()
+                        self.append(qtc_block)
+                        qtc_pending = []
+                        qtc_counter += 1
+                        if qtc_counter == width // self.params_i:
+                            qtc_counter = 0
+            else:
+                qtc_pending.append(item)
+                if item == 0:
+                    if qtc_counter == 0:
+                        self.new_row()
+                    qtc_block = QTCBlock(qtc_block=np.array(reording_decoding(rle_decoding(qtc_pending, q_matrix.shape), q_matrix.shape)).astype(int), q_matrix=q_matrix)
+                    qtc_block.qtc_to_block()
+                    self.append(qtc_block)
+                    qtc_pending = []
+                    qtc_counter += 1
+                    if qtc_counter == width // self.params_i:
+                        qtc_counter = 0
         self.shape = (len(self.blocks) * self.params_i, width)
 
     def to_residual_frame(self) -> Frame:
@@ -183,114 +339,3 @@ class QTCFrame:
         frame = Frame(-1, self.shape[0], self.shape[1], self.params_i)
         frame.block_to_pixel(np.array(self.blocks))
         return frame
-    
-    @staticmethod
-    def rle_encoding(array: list) -> list:
-        """
-            Run-length encoding.
-
-            Parameters:
-                array (list): The array to encode.
-
-            Returns:
-                list: The encoded array.
-        """
-        new_array = []
-        pending = []
-        counter = 0
-        for item in array:
-            if item == 0:
-                if counter < 0:
-                    new_array.append(counter)
-                    new_array += pending
-                    pending = []
-                    counter = 0
-                counter += 1
-            else:
-                if counter > 0:
-                    new_array.append(counter)
-                    counter = 0
-                counter -= 1
-                pending.append(item)
-        if len(pending) > 0:
-            new_array.append(counter)
-            new_array += pending
-        new_array.append(0)
-        return new_array
-
-    @staticmethod
-    def rle_decoding(array: list, shape: tuple) -> list:
-        """
-            Run-length decoding.
-
-            Parameters:
-                array (list): The array to decode.
-                shape (tuple): The shape of the matrix.
-
-            Returns:
-                list: The decoded array.
-        """
-        max_length = shape[0] * shape[1]
-        new_array = []
-        counter = 0
-        for i in range(len(array)):
-            item = array[i]
-            if counter == 0:
-                counter = item
-                if counter == 0:
-                    offset = max_length - len(new_array)
-                    if offset > 0:
-                        counter = offset
-                if counter > 0:
-                    for i in range(counter):
-                        new_array.append(0)
-                    counter = 0
-                continue
-            if counter < 0:
-                new_array.append(item)
-                counter += 1
-            else:
-                new_array.append(0)
-                counter -= 1
-        
-        return new_array
-    
-    @staticmethod
-    def reording_encoding(qtc_dump: list) -> list:
-        """
-            Matrix reording encoding.
-
-            Parameters:
-                qtc_dump (list): The qtc dump to encode.
-
-            Returns:
-                list: The encoded qtc dump.
-        """
-        array = []
-        current = (0, 0)
-        row = 0
-        end = (len(qtc_dump), len(qtc_dump[0])) # (rows, columns)
-        for _ in range(end[0] * end[1]):
-            array.append(qtc_dump[current[0]][current[1]])
-            current, row = reordering_helper(end, current, row)
-        return array
-
-    @staticmethod
-    def reording_decoding(reordered_dump: list, shape: tuple) -> list:
-        """
-            Matrix reording decoding.
-
-            Parameters:
-                reordered_dump (list): The reordered dump to decode.
-                shape (tuple): The shape of the matrix.
-            
-            Returns:
-                list: The decoded qtc dump.
-        """
-        matrix = np.empty(shape, dtype=int)
-        current = (0, 0)
-        row = 0
-        for item in reordered_dump:
-            matrix[current[0], current[1]] = item
-            current, row = reordering_helper(shape, current, row)
-        return matrix

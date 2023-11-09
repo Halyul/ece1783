@@ -1,6 +1,6 @@
 import pathlib
 from lib.utils.misc import binstr_to_bytes, bytes_to_binstr, exp_golomb_encoding, array_exp_golomb_decoding
-from lib.enums import Intraframe, TypeMarker
+from lib.enums import Intraframe, TypeMarker, VBSMarker
 
 class MotionVector:
 
@@ -26,11 +26,15 @@ class MotionVector:
     def __sub__(self, other):
         return MotionVector(self.y - other.y, self.x - other.x, self.ref_offset - other.ref_offset)
     
+    def to_str(self, is_intraframe=False) -> str:
+        return exp_golomb_encoding(self.y) if is_intraframe else '{}{}{}'.format(exp_golomb_encoding(self.y), exp_golomb_encoding(self.x), exp_golomb_encoding(self.ref_offset))
+    
 class MotionVectorFrame:
 
-    def __init__(self, is_intraframe=False, length=0):
+    def __init__(self, is_intraframe=False, length=0, vbs_enable=False):
         self.is_intraframe = is_intraframe
         self.raw = [None] * length
+        self.vbs_enable = vbs_enable
 
     def new_row(self):
         """
@@ -66,10 +70,26 @@ class MotionVectorFrame:
         """
         counter = 0
         total = 0
-        for object in self.raw:
-            for item in object:
-                total += item.mae
-                counter += 1
+        if self.vbs_enable:
+            for i in range(len(self.raw)):
+                for j in range(len(self.raw[i])):
+                    item = self.raw[i][j]
+                    vbs = item['vbs']
+                    block = item['predictor']
+                    if vbs is VBSMarker.SPLIT:
+                        for predictor in block:
+                            total += predictor.mae
+                            counter += 1
+                    elif vbs is VBSMarker.UNSPLIT:
+                        total += block.mae
+                        counter += 1
+                    else:
+                        raise Exception('Invalid VBS Marker')
+        else:
+            for object in self.raw:
+                for item in object:
+                    total += item.mae
+                    counter += 1
         return total / counter
 
     def tobytes(self) -> bytes:
@@ -86,16 +106,36 @@ class MotionVectorFrame:
         else:
             prev_mv = MotionVector(0, 0)
             text += '{}'.format(TypeMarker.P_FRAME.value)
-        
-        for i in range(len(self.raw)):
-            for j in range(len(self.raw[i])):
-                diff_mv = self.raw[i][j] - prev_mv
-                prev_mv = self.raw[i][j]
-                if self.is_intraframe:
-                    text += '{}'.format(exp_golomb_encoding(diff_mv.y))
-                else:
-                    text += '{}{}{}'.format(exp_golomb_encoding(diff_mv.y), exp_golomb_encoding(diff_mv.x), exp_golomb_encoding(diff_mv.ref_offset))
+
+        if self.vbs_enable:
+            for i in range(len(self.raw)):
+                for j in range(len(self.raw[i])):
+                    item = self.raw[i][j]
+                    vbs = item['vbs']
+                    block = item['predictor']
+                    if vbs is VBSMarker.SPLIT:
+                        text += '{}'.format(exp_golomb_encoding(VBSMarker.SPLIT.value))
+
+                        for predictor in block:
+                            diff_mv = predictor - prev_mv
+                            prev_mv = predictor
+                            text += '{}'.format(diff_mv.to_str(self.is_intraframe))
+
+                    elif vbs is VBSMarker.UNSPLIT:
+                        diff_mv = block - prev_mv
+                        prev_mv = block
+                        text += '{}{}'.format(exp_golomb_encoding(VBSMarker.UNSPLIT.value), diff_mv.to_str(self.is_intraframe))
+
+                    else:
+                        raise Exception('Invalid VBS Marker')
+        else:
+            for i in range(len(self.raw)):
+                for j in range(len(self.raw[i])):
+                    diff_mv = self.raw[i][j] - prev_mv
+                    prev_mv = self.raw[i][j]
+                    text += diff_mv.to_str(self.is_intraframe)
         return binstr_to_bytes(text)
+        # return text
 
     def read_from_file(self, path: pathlib.Path, width: int, params_i: int):
         """
@@ -119,22 +159,76 @@ class MotionVectorFrame:
         mv = array_exp_golomb_decoding(mv)
         mv_counter = 0
         if self.is_intraframe:
-            for item in mv:
+            index_counter = 0
+            while index_counter < len(mv):
                 if mv_counter == 0:
                     self.new_row()
-                current_mv = prev_mv + MotionVector(item, 0)
+                if self.vbs_enable:
+                    vbs = VBSMarker(int(mv[index_counter]))
+                    index_counter += 1
+                    if vbs is VBSMarker.SPLIT:
+                        current_mv = dict(
+                            vbs=VBSMarker.SPLIT,
+                            predictor=[]
+                        )
+                        for _ in range(4):
+                            mv_a = prev_mv + MotionVector(mv[index_counter], 0)
+                            if mv_a.y > 1:
+                                raise Exception('Invalid motion vector')
+                            prev_mv = mv_a
+                            current_mv['predictor'].append(mv_a)
+                            index_counter += 1
+                    elif vbs is VBSMarker.UNSPLIT:
+                        mv_a = prev_mv + MotionVector(mv[index_counter], 0)
+                        current_mv = dict(
+                            vbs=VBSMarker.UNSPLIT,
+                            predictor=mv_a
+                        )
+                        prev_mv = mv_a
+                        index_counter += 1
+                    else:
+                        raise Exception('Invalid VBS Marker')
+                else:
+                    current_mv = prev_mv + MotionVector(mv[index_counter], 0)
+                    prev_mv = current_mv
+                    index_counter += 1
                 self.append(current_mv)
-                prev_mv = current_mv
                 mv_counter += 1
                 if mv_counter == width // params_i:
                     mv_counter = 0
         else:
-            for j in range(0, len(mv), 3):
+            index_counter = 0
+            while index_counter < len(mv):
                 if mv_counter == 0:
                     self.new_row()
-                current_mv = prev_mv + MotionVector(mv[j], mv[j + 1], mv[j + 2])
+                if self.vbs_enable:
+                    vbs = VBSMarker(int(mv[index_counter]))
+                    index_counter += 1
+                    if vbs is VBSMarker.SPLIT:
+                        current_mv = dict(
+                            vbs=VBSMarker.SPLIT,
+                            predictor=[]
+                        )
+                        for _ in range(4):
+                            mv_a = prev_mv + MotionVector(mv[index_counter], mv[index_counter + 1], mv[index_counter + 2])
+                            prev_mv = mv_a
+                            current_mv['predictor'].append(mv_a)
+                            index_counter += 3
+                    elif vbs is VBSMarker.UNSPLIT:
+                        mv_a = prev_mv + MotionVector(mv[index_counter], mv[index_counter + 1], mv[index_counter + 2])
+                        prev_mv = mv_a
+                        current_mv = dict(
+                            vbs=VBSMarker.UNSPLIT,
+                            predictor=mv_a
+                        )
+                        index_counter += 3
+                    else:
+                        raise Exception('Invalid VBS Marker')
+                else:
+                    current_mv = prev_mv + MotionVector(mv[index_counter], mv[index_counter + 1], mv[index_counter + 2])
+                    prev_mv = current_mv
+                    index_counter += 3
                 self.append(current_mv)
-                prev_mv = current_mv
                 mv_counter += 1
                 if mv_counter == width // params_i:
                     mv_counter = 0

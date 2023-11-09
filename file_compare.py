@@ -16,9 +16,11 @@ for reconstructed_file in reconstructed_output_path.iterdir():
     decoder_file = decoder_output_path.joinpath(reconstructed_file.name)
     decoder_file_bytes = decoder_file.read_bytes()
     decoder_file_array = np.frombuffer(decoder_file_bytes, dtype=np.uint8)
-    if not np.array_equal(reconstructed_file_array, decoder_file_array):
-        print("file {} not equal".format(reconstructed_file.name))
-        flag = False
+    for i in range(len(reconstructed_file_array)):
+        if reconstructed_file_array[i] != decoder_file_array[i]:
+            print("Error in file: {}; index: {}".format(reconstructed_file.name, i))
+            print(reconstructed_file_array[i], decoder_file_array[i])
+            flag = False
 
 if flag:
     print("All files equal")

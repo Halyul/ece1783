@@ -145,17 +145,11 @@ def extend_block(original_top_left: tuple, params_i: int, margin: tuple, shape: 
     
     return top_left, bottom_right
 
-"""
-    RDO Equations – Lagrange Multiplier Optimization. Lecture 5
-"""
-def rdo():
-    pass
-
 class Frame:
 
     def __init__(self, index: int=-1, height: int=0, width: int=0, params_i: int=1, is_intraframe: bool=False, data: np.ndarray=None, prev: Literal['Frame']=None, frame=None):
         if frame is None:
-            self.index = index
+            self.index: int = index
             self.height = height
             self.width = width
             self.shape = (height, width)
@@ -217,14 +211,14 @@ class Frame:
         np_block_array, _, _, _ = block_create(self.raw, self.params_i)
         return np_block_array
     
-    def block_to_pixel(self, np_array: np.ndarray) -> np.ndarray:
+    def block_to_pixel(self, array) -> np.ndarray:
         """
             Convert the frame to pixel.
 
             Parameters:
                 np_array (np.ndarray): The block array.
         """
-        self.raw = pixel_create(np_array, self.shape, self.params_i).astype(np.int16)
+        self.raw = pixel_create(np.array(array), self.shape, self.params_i).astype(np.int16)
         return self.raw
     
     def convert_within_range(self, dtype: np.dtype=np.uint8):

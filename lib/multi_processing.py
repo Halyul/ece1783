@@ -95,7 +95,7 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
         reconstructed_path = config.output_path.reconstructed_folder
         if not frame.is_intraframe:
             frame.prev = prev_frame
-        prev_frame, mv_dump, qtc_block_dump = calc_motion_vector_parallel_helper(frame, config.params.r, q_matrix, reconstructed_path, pool)
+        prev_frame, mv_dump, qtc_block_dump = calc_motion_vector_parallel_helper(frame, config.params, q_matrix, reconstructed_path, pool)
 
         if not frame.is_intraframe:
             nRefFrames = config.params.nRefFrames

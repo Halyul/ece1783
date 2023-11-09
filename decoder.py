@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from lib.config.config import Config
-from lib.enums import Intraframe
+from lib.enums import Intraframe, VBSMarker
 from lib.components.frame import Frame, extend_block
 from lib.components.qtc import QTCFrame, quantization_matrix
 from lib.components.mv import MotionVectorFrame
@@ -19,7 +19,7 @@ import time
     Returns:
         (np.ndarray): The reconstructed frame.
 """
-def construct_reconstructed_frame(mv_dump, frame, residual_frame) -> np.ndarray:
+def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=False) -> np.ndarray:
     y_counter = 0
     x_counter = 0
     if frame.is_intraframe:
@@ -29,31 +29,63 @@ def construct_reconstructed_frame(mv_dump, frame, residual_frame) -> np.ndarray:
         for y in range(len(mv_dump.raw)):
             for x in range(len(mv_dump.raw[y])):
                 current_coor = (y_counter, x_counter)
-                predictor = mv_dump.raw[y][x].y
-                if x == 0 and predictor == Intraframe.HORIZONTAL.value:
-                    # first column of blocks in horizontal
-                    predictor_block = np.full((params_i, 1), 128)
-                    repeat_value = Intraframe.HORIZONTAL.value
-                elif y == 0 and predictor == Intraframe.VERTICAL.value:
-                    # first row of blocks in vertical
-                    predictor_block = np.full((1, params_i), 128)
-                    repeat_value = Intraframe.VERTICAL.value
-                elif predictor == Intraframe.HORIZONTAL.value:
-                    # horizontal
-                    hor_top_left, _ = extend_block(current_coor, params_i, (0, 0, 0, 1), (height, width))
-                    predictor_block = reconstructed_block_dump.raw[hor_top_left[0]:hor_top_left[0] + params_i, hor_top_left[1]:hor_top_left[1] + 1]
-                    repeat_value = Intraframe.HORIZONTAL.value
-                elif predictor == Intraframe.VERTICAL.value:
-                    # vertical
-                    ver_top_left, _ = extend_block(current_coor, params_i, (1, 0, 0, 0), (height, width))
-                    predictor_block = reconstructed_block_dump.raw[ver_top_left[0]:ver_top_left[0] + 1, ver_top_left[1]:ver_top_left[1] + params_i]
-                    repeat_value = Intraframe.VERTICAL.value
+                local_vbs_enable = vbs_enable and mv_dump.raw[y][x]['vbs'] is VBSMarker.SPLIT
+                if local_vbs_enable:
+                    subblock_params_i = frame.params_i // 2
+                    top_lefts = [(_y + y_counter, _x + x_counter) for _y in range(0, frame.params_i, subblock_params_i) for _x in range(0, frame.params_i, subblock_params_i)]
+                    for centered_top_left_index in range(len(top_lefts)):
+                        centered_top_left = top_lefts[centered_top_left_index]
+                        predictor = mv_dump.raw[y][x]['predictor'][centered_top_left_index].y
+                        if centered_top_left[1] == 0 and predictor == Intraframe.HORIZONTAL.value:
+                            # first column of blocks in horizontal
+                            predictor_block = np.full((subblock_params_i, 1), 128)
+                            repeat_value = Intraframe.HORIZONTAL.value
+                        elif centered_top_left[0] == 0 and predictor == Intraframe.VERTICAL.value:
+                            # first row of blocks in vertical
+                            predictor_block = np.full((1, subblock_params_i), 128)
+                            repeat_value = Intraframe.VERTICAL.value
+                        elif predictor == Intraframe.HORIZONTAL.value:
+                            # horizontal
+                            hor_top_left, _ = extend_block(centered_top_left, subblock_params_i, (0, 0, 0, 1), (height, width))
+                            predictor_block = reconstructed_block_dump.raw[hor_top_left[0]:hor_top_left[0] + subblock_params_i, hor_top_left[1]:hor_top_left[1] + 1]
+                            repeat_value = Intraframe.HORIZONTAL.value
+                        elif predictor == Intraframe.VERTICAL.value:
+                            # vertical
+                            ver_top_left, _ = extend_block(centered_top_left, subblock_params_i, (1, 0, 0, 0), (height, width))
+                            predictor_block = reconstructed_block_dump.raw[ver_top_left[0]:ver_top_left[0] + 1, ver_top_left[1]:ver_top_left[1] + subblock_params_i]
+                            repeat_value = Intraframe.VERTICAL.value
+                        else:
+                            raise Exception('Invalid predictor.')
+                        predictor_block = predictor_block.repeat(subblock_params_i, repeat_value)
+                        residual_block = residual_frame.raw[centered_top_left[0]:centered_top_left[0] + subblock_params_i, centered_top_left[1]:centered_top_left[1] + subblock_params_i]
+                        reconstructed_block_dump.raw[centered_top_left[0]:centered_top_left[0] + subblock_params_i, centered_top_left[1]:centered_top_left[1] + subblock_params_i] = predictor_block + residual_block
+                    x_counter += params_i
                 else:
-                    raise Exception('Invalid predictor.')
-                predictor_block = predictor_block.repeat(params_i, repeat_value)
-                residual_block = residual_frame.raw[y_counter:y_counter + params_i, x_counter:x_counter + params_i]
-                reconstructed_block_dump.raw[y_counter:y_counter + params_i, x_counter:x_counter + params_i] = predictor_block + residual_block
-                x_counter += params_i
+                    predictor = mv_dump.raw[y][x]['predictor'].y if vbs_enable else mv_dump.raw[y][x].y
+                    if x == 0 and predictor == Intraframe.HORIZONTAL.value:
+                        # first column of blocks in horizontal
+                        predictor_block = np.full((params_i, 1), 128)
+                        repeat_value = Intraframe.HORIZONTAL.value
+                    elif y == 0 and predictor == Intraframe.VERTICAL.value:
+                        # first row of blocks in vertical
+                        predictor_block = np.full((1, params_i), 128)
+                        repeat_value = Intraframe.VERTICAL.value
+                    elif predictor == Intraframe.HORIZONTAL.value:
+                        # horizontal
+                        hor_top_left, _ = extend_block(current_coor, params_i, (0, 0, 0, 1), (height, width))
+                        predictor_block = reconstructed_block_dump.raw[hor_top_left[0]:hor_top_left[0] + params_i, hor_top_left[1]:hor_top_left[1] + 1]
+                        repeat_value = Intraframe.HORIZONTAL.value
+                    elif predictor == Intraframe.VERTICAL.value:
+                        # vertical
+                        ver_top_left, _ = extend_block(current_coor, params_i, (1, 0, 0, 0), (height, width))
+                        predictor_block = reconstructed_block_dump.raw[ver_top_left[0]:ver_top_left[0] + 1, ver_top_left[1]:ver_top_left[1] + params_i]
+                        repeat_value = Intraframe.VERTICAL.value
+                    else:
+                        raise Exception('Invalid predictor.')
+                    predictor_block = predictor_block.repeat(params_i, repeat_value)
+                    residual_block = residual_frame.raw[y_counter:y_counter + params_i, x_counter:x_counter + params_i]
+                    reconstructed_block_dump.raw[y_counter:y_counter + params_i, x_counter:x_counter + params_i] = predictor_block + residual_block
+                    x_counter += params_i
             y_counter += params_i
             x_counter = 0
     else:
@@ -61,11 +93,34 @@ def construct_reconstructed_frame(mv_dump, frame, residual_frame) -> np.ndarray:
         for i in range(len(mv_dump.raw)):
             predicted_frame_dump.append([])
             for j in range(len(mv_dump.raw[i])):
-                top_left = mv_dump.raw[i][j].raw
                 current_frame = frame.prev
-                for _ in range(mv_dump.raw[i][j].ref_offset):
-                    current_frame = current_frame.prev
-                predicted_frame_dump[i].append(current_frame.raw[y_counter + top_left[0]:y_counter + top_left[0] + params_i, x_counter + top_left[1]:x_counter + top_left[1] + params_i])
+                if vbs_enable:
+                    item = mv_dump.raw[i][j]
+                    vbs = item['vbs']
+                    block = item['predictor']
+                    if vbs is VBSMarker.SPLIT:
+                        subblock_params_i = frame.params_i // 2
+                        top_lefts = [(_y + y_counter, _x + x_counter) for _y in range(0, frame.params_i, subblock_params_i) for _x in range(0, frame.params_i, subblock_params_i)]
+                        frame_data = []
+                        for top_left_index in range(len(top_lefts)):
+                            top_left_coor = top_lefts[top_left_index]
+                            top_left = block[top_left_index].raw
+                            local_current_frame = current_frame
+                            for _ in range(block[top_left_index].ref_offset):
+                                local_current_frame = local_current_frame.prev
+                            frame_data.append(local_current_frame.raw[top_left_coor[0] + top_left[0]:top_left_coor[0] + top_left[0] + subblock_params_i, top_left_coor[1] + top_left[1]:top_left_coor[1] + top_left[1] + subblock_params_i])
+                        frame_stack = np.concatenate((np.concatenate((frame_data[0], frame_data[1]), axis=1), np.concatenate((frame_data[2], frame_data[3]), axis=1)), axis=0)
+                        predicted_frame_dump[i].append(frame_stack)
+                    elif vbs is VBSMarker.UNSPLIT:
+                        top_left = block.raw
+                        for _ in range(block.ref_offset):
+                            current_frame = current_frame.prev
+                        predicted_frame_dump[i].append(current_frame.raw[y_counter + top_left[0]:y_counter + top_left[0] + params_i, x_counter + top_left[1]:x_counter + top_left[1] + params_i])
+                else:
+                    top_left = mv_dump.raw[i][j].raw
+                    for _ in range(mv_dump.raw[i][j].ref_offset):
+                        current_frame = current_frame.prev
+                    predicted_frame_dump[i].append(current_frame.raw[y_counter + top_left[0]:y_counter + top_left[0] + params_i, x_counter + top_left[1]:x_counter + top_left[1] + params_i])
                 x_counter += params_i
             y_counter += params_i
             x_counter = 0
@@ -92,12 +147,13 @@ if __name__ == '__main__':
     params_i = int(l[3])
     params_qp = int(l[4])
     nRefFrames = int(l[5])
+    VBSEnabled = bool(int(l[6]))
     q_matrix = quantization_matrix(params_i, params_qp)
     read_frame_counter = 0
     prev_frame = None
     while read_frame_counter < total_frames:
         mv_file = mv_path.joinpath('{}'.format(read_frame_counter))
-        mv_dump = MotionVectorFrame()
+        mv_dump = MotionVectorFrame(vbs_enable=VBSEnabled)
         mv_dump.read_from_file(mv_file, width, params_i)
 
         frame = Frame(read_frame_counter, height, width, params_i, mv_dump.is_intraframe)
@@ -105,11 +161,11 @@ if __name__ == '__main__':
             frame.prev = prev_frame
 
         qtc_file = residual_path.joinpath('{}'.format(read_frame_counter))
-        qtc_frame = QTCFrame(params_i=params_i)
-        qtc_frame.read_from_file(qtc_file, q_matrix, width)
+        qtc_frame = QTCFrame(params_i=params_i, vbs_enable=VBSEnabled)
+        qtc_frame.read_from_file(qtc_file, q_matrix, width, params_qp)
         residual_frame = qtc_frame.to_residual_frame()
 
-        frame = construct_reconstructed_frame(mv_dump, frame, residual_frame)
+        frame = construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=VBSEnabled)
         frame.convert_within_range()
         frame.dump(output_path.joinpath('{}'.format(read_frame_counter)))
 

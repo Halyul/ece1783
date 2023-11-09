@@ -31,7 +31,7 @@ class Config:
     def __config_override(self, override: dict) -> dict:
         for key, value in override.items():
             if key in self.config:
-                if type(self.config[key]) == dict:
+                if isinstance(self.config[key], dict):
                     for k, v in value.items():
                         if k in self.config[key]:
                             self.config[key][k] = v
