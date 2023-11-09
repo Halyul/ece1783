@@ -6,23 +6,14 @@ from lib.components.mv import MotionVectorFrame
 import numpy as np
 import matplotlib.pyplot as plt
 
-def overlay(coor: tuple, shape: tuple, params_i: int):
-    block = np.full((params_i, params_i), 255).astype(np.uint8)
-    if not(coor[0] + params_i == shape[0]):
-        block[-1:, :] = 0
-    if not(coor[1] + params_i == shape[1]):
-        block[:, -1:] = 0
-    return block
-
 def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=False) -> np.ndarray:
     y_counter = 0
     x_counter = 0
-    label_dump = None
+    label_dump = []
     if frame.is_intraframe:
         # is intraframe
         height, width = residual_frame.shape
         reconstructed_block_dump = Frame(frame.index, height, width, frame.params_i, frame.is_intraframe, data=np.empty(residual_frame.shape, dtype=int))
-        label_dump = np.full(residual_frame.shape, 255).astype(np.uint8)
         for y in range(len(mv_dump.raw)):
             for x in range(len(mv_dump.raw[y])):
                 current_coor = (y_counter, x_counter)
@@ -56,7 +47,6 @@ def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=Fal
                         predictor_block = predictor_block.repeat(subblock_params_i, repeat_value)
                         residual_block = residual_frame.raw[centered_top_left[0]:centered_top_left[0] + subblock_params_i, centered_top_left[1]:centered_top_left[1] + subblock_params_i]
                         reconstructed_block_dump.raw[centered_top_left[0]:centered_top_left[0] + subblock_params_i, centered_top_left[1]:centered_top_left[1] + subblock_params_i] = predictor_block + residual_block
-                        label_dump[centered_top_left[0]:centered_top_left[0] + subblock_params_i, centered_top_left[1]:centered_top_left[1] + subblock_params_i] = overlay(centered_top_left, residual_frame.shape, subblock_params_i)
                     x_counter += params_i
                 else:
                     predictor = mv_dump.raw[y][x]['predictor'].y if vbs_enable else mv_dump.raw[y][x].y
@@ -83,16 +73,13 @@ def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=Fal
                     predictor_block = predictor_block.repeat(params_i, repeat_value)
                     residual_block = residual_frame.raw[y_counter:y_counter + params_i, x_counter:x_counter + params_i]
                     reconstructed_block_dump.raw[y_counter:y_counter + params_i, x_counter:x_counter + params_i] = predictor_block + residual_block
-                    label_dump[y_counter:y_counter + params_i, x_counter:x_counter + params_i] = overlay(current_coor, residual_frame.shape, params_i)
                     x_counter += params_i
             y_counter += params_i
             x_counter = 0
     else:
         predicted_frame_dump = []
-        label_dump = []
         for i in range(len(mv_dump.raw)):
             predicted_frame_dump.append([])
-            label_dump.append([])
             for j in range(len(mv_dump.raw[i])):
                 current_frame = frame.prev
                 if vbs_enable:
@@ -103,7 +90,6 @@ def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=Fal
                         subblock_params_i = frame.params_i // 2
                         top_lefts = [(_y + y_counter, _x + x_counter) for _y in range(0, frame.params_i, subblock_params_i) for _x in range(0, frame.params_i, subblock_params_i)]
                         frame_data = []
-                        label_data = []
                         for top_left_index in range(len(top_lefts)):
                             top_left_coor = top_lefts[top_left_index]
                             top_left = block[top_left_index].raw
@@ -112,11 +98,14 @@ def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=Fal
                                 local_current_frame = local_current_frame.prev
                             frame_data.append(local_current_frame.raw[top_left_coor[0] + top_left[0]:top_left_coor[0] + top_left[0] + subblock_params_i, top_left_coor[1] + top_left[1]:top_left_coor[1] + top_left[1] + subblock_params_i])
                             coor = (top_left_coor[0] + top_left[0], top_left_coor[1] + top_left[1])
-                            label_data.append(overlay(coor, residual_frame.shape, subblock_params_i))
+                            label_dump.append(dict(
+                                y = coor[0] + subblock_params_i // 2,
+                                x = coor[1] + subblock_params_i // 2,
+                                dy = top_left[0],
+                                dx = top_left[1],
+                            ))
                         frame_stack = np.concatenate((np.concatenate((frame_data[0], frame_data[1]), axis=1), np.concatenate((frame_data[2], frame_data[3]), axis=1)), axis=0)
-                        label_stack = np.concatenate((np.concatenate((label_data[0], label_data[1]), axis=1), np.concatenate((label_data[2], label_data[3]), axis=1)), axis=0)
                         predicted_frame_dump[i].append(frame_stack)
-                        label_dump[i].append(label_stack)
                     elif vbs is VBSMarker.UNSPLIT:
                         top_left = block.raw
                         for _ in range(block.ref_offset):
@@ -124,7 +113,12 @@ def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=Fal
                         coor = (y_counter + top_left[0], x_counter + top_left[1])
                         temp = current_frame.raw[y_counter + top_left[0]:y_counter + top_left[0] + params_i, x_counter + top_left[1]:x_counter + top_left[1] + params_i]
                         predicted_frame_dump[i].append(temp)
-                        label_dump[i].append(overlay(coor, residual_frame.shape, params_i))
+                        label_dump.append(dict(
+                            y = coor[0] + params_i // 2,
+                            x = coor[1] + params_i // 2,
+                            dy = top_left[0],
+                            dx = top_left[1],
+                        ))
                 else:
                     top_left = mv_dump.raw[i][j].raw
                     for _ in range(mv_dump.raw[i][j].ref_offset):
@@ -132,11 +126,15 @@ def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=Fal
                     coor = (y_counter + top_left[0], x_counter + top_left[1])
                     temp = current_frame.raw[y_counter + top_left[0]:y_counter + top_left[0] + params_i, x_counter + top_left[1]:x_counter + top_left[1] + params_i]
                     predicted_frame_dump[i].append(temp)
-                    label_dump[i].append(overlay(coor, residual_frame.shape, params_i))
+                    label_dump.append(dict(
+                        y = coor[0] + params_i // 2,
+                        x = coor[1] + params_i // 2,
+                        dy = top_left[0],
+                        dx = top_left[1],
+                    ))
                 x_counter += params_i
             y_counter += params_i
             x_counter = 0
-        label_dump = pixel_create(np.array(label_dump), frame.shape, params_i)
         frame.block_to_pixel(np.array(predicted_frame_dump))
         frame += residual_frame
         reconstructed_block_dump = frame
@@ -150,7 +148,7 @@ if __name__ == '__main__':
     residual_path = config.decoder.input_path.residual_folder
     meta_file = config.decoder.input_path.meta_file
 
-    output_path = config.statistics.path.joinpath('overlay')
+    output_path = config.statistics.path.joinpath('mv_overlay')
     output_path.mkdir(parents=True, exist_ok=True)
 
     l = meta_file.read_text().split(',')
@@ -179,9 +177,13 @@ if __name__ == '__main__':
 
         frame, labels = construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=VBSEnabled)
         frame.convert_within_range()
-        if labels is not None:
-            frame_copy = frame.raw.copy()
-            plt.imsave(output_path.joinpath('{}.png'.format(read_frame_counter)), labels & frame_copy, cmap='gray')
+        if not mv_dump.is_intraframe:
+            plt.imshow(frame.raw.copy(), cmap='gray')
+            plt.axis('off')
+            for label in labels:
+                plt.arrow(**label, head_width=3, head_length=3, color='red')
+            plt.savefig(output_path.joinpath('{}.png'.format(read_frame_counter)), bbox_inches='tight', pad_inches=0)
+        plt.clf()
 
         frame.prev = prev_frame
         prev_frame = frame

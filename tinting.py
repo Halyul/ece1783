@@ -12,9 +12,13 @@ COLOR_LIST = [
     'green',
     'blue',
     'yellow',
-    'cyan',
-    'magenta',
-    'white',
+    'black'
+]
+
+MODE_LIST = [
+    'cyan', #Intraframe.VERTICAL
+    'magenta', #Intraframe.HORIZONTAL
+    'black'
 ]
 
 def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=False) -> np.ndarray:
@@ -25,6 +29,7 @@ def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=Fal
         # is intraframe
         height, width = residual_frame.shape
         reconstructed_block_dump = Frame(frame.index, height, width, frame.params_i, frame.is_intraframe, data=np.empty(residual_frame.shape, dtype=int))
+        label_dump = np.full(residual_frame.shape, Intraframe.HORIZONTAL.value)
         for y in range(len(mv_dump.raw)):
             for x in range(len(mv_dump.raw[y])):
                 current_coor = (y_counter, x_counter)
@@ -58,6 +63,7 @@ def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=Fal
                         predictor_block = predictor_block.repeat(subblock_params_i, repeat_value)
                         residual_block = residual_frame.raw[centered_top_left[0]:centered_top_left[0] + subblock_params_i, centered_top_left[1]:centered_top_left[1] + subblock_params_i]
                         reconstructed_block_dump.raw[centered_top_left[0]:centered_top_left[0] + subblock_params_i, centered_top_left[1]:centered_top_left[1] + subblock_params_i] = predictor_block + residual_block
+                        label_dump[centered_top_left[0]:centered_top_left[0] + subblock_params_i, centered_top_left[1]:centered_top_left[1] + subblock_params_i] = np.full((subblock_params_i, subblock_params_i), repeat_value)
                     x_counter += params_i
                 else:
                     predictor = mv_dump.raw[y][x]['predictor'].y if vbs_enable else mv_dump.raw[y][x].y
@@ -84,6 +90,7 @@ def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=Fal
                     predictor_block = predictor_block.repeat(params_i, repeat_value)
                     residual_block = residual_frame.raw[y_counter:y_counter + params_i, x_counter:x_counter + params_i]
                     reconstructed_block_dump.raw[y_counter:y_counter + params_i, x_counter:x_counter + params_i] = predictor_block + residual_block
+                    label_dump[y_counter:y_counter + params_i, x_counter:x_counter + params_i] = np.full((params_i, params_i), repeat_value)
                     x_counter += params_i
             y_counter += params_i
             x_counter = 0
@@ -182,12 +189,13 @@ if __name__ == '__main__':
 
         frame, labels = construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=VBSEnabled)
         frame.convert_within_range()
-        if labels is not None:
+        if not mv_dump.is_intraframe:
             labels = pixel_create(np.array(labels), frame.shape, params_i)
             image = color.label2rgb(labels, image=frame.raw, colors=COLOR_LIST, alpha=0.3, bg_label=-1, bg_color=None, image_alpha=1)
             plt.imsave(output_path.joinpath('{}.png'.format(read_frame_counter)), image)
         else:
-            plt.imsave(output_path.joinpath('{}.png'.format(read_frame_counter)), frame.raw, cmap='gray')
+            image = color.label2rgb(labels, image=frame.raw, colors=MODE_LIST, alpha=0.3, bg_label=-1, bg_color=None, image_alpha=1)
+            plt.imsave(output_path.joinpath('{}.png'.format(read_frame_counter)), image)
 
         frame.prev = prev_frame
         prev_frame = frame
