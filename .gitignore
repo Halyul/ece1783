@@ -7,3 +7,4 @@ y_only/*
 output/* 
 statistics/*
 decoder_output/*
+venv/*
