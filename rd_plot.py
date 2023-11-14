@@ -3,6 +3,7 @@ import numpy as np
 from lib.config.config import Config
 from lib.signal_processing import psnr
 import matplotlib.pyplot as plt
+import time
 
 if __name__ == '__main__':
     config = Config('config.yaml')
@@ -36,24 +37,24 @@ if __name__ == '__main__':
             FMEEnable=False,
             FastME=False,
         ),
-        dict(
-            nRefFrames=1,
-            VBSEnable=False,
-            FMEEnable=True,
-            FastME=False,
-        ),
-        dict(
-            nRefFrames=1,
-            VBSEnable=False,
-            FMEEnable=False,
-            FastME=True,
-        ),
-        dict(
-            nRefFrames=4,
-            VBSEnable=True,
-            FMEEnable=True,
-            FastME=True,
-        )
+        # dict(
+        #     nRefFrames=1,
+        #     VBSEnable=False,
+        #     FMEEnable=True,
+        #     FastME=False,
+        # ),
+        # dict(
+        #     nRefFrames=1,
+        #     VBSEnable=False,
+        #     FMEEnable=False,
+        #     FastME=True,
+        # ),
+        # dict(
+        #     nRefFrames=4,
+        #     VBSEnable=True,
+        #     FMEEnable=True,
+        #     FastME=True,
+        # )
     ]
     results = []
 
@@ -64,6 +65,7 @@ if __name__ == '__main__':
         feature_set = params_overrides[i]
         for params_qp in params_qp_list:
             print("current run: set={}".format(str(feature_set)))
+            start = time.time()
             reader = YUVProcessor('config.yaml', 
                                 config_override=dict(
                                     params=dict(
@@ -72,6 +74,7 @@ if __name__ == '__main__':
                                     )
                                 )
                                 )
+            end = time.time()
             total_size = 0
             total_psnr = 0
             for j in range(stop_at):
@@ -85,12 +88,14 @@ if __name__ == '__main__':
                 reconstructed_frame = np.frombuffer(reconstructed_file, dtype=np.uint8).reshape(reader.info['paded_height'], reader.info['paded_width'])
                 total_psnr += psnr(original_frame, reconstructed_frame)
             average_psnr = total_psnr / stop_at
+            exec_time = end - start
             split_percentage = split_counter_path.read_text().split('\n').pop(0).split(' ')[1]
             data = {
                 'qp': params_qp,
                 'size': total_size,
                 'psnr': average_psnr,
                 'split_percentage': float(split_percentage[:5]),
+                'time': exec_time
             }
             results[-1].append(data)
             print(data)
@@ -109,6 +114,22 @@ if __name__ == '__main__':
     plt.title('R-D Plot')
     plt.legend()
     plt.savefig(config.statistics.path.joinpath('rd_plot.png'))
+    plt.clf()
+
+    # execution time
+    for i in range(len(results)):
+        curve = results[i]
+        x_axis = [data['size'] for data in curve]
+        y_axis = [data['time'] for data in curve]
+        combined_array = np.column_stack((x_axis, y_axis))
+        plt.plot(combined_array[:, 0], combined_array[:, 1],
+                 label="feature_set={}".format(i), marker='o')
+        plt.ticklabel_format(useOffset=False, style='plain')
+    plt.xlabel('bitrate in bits')
+    plt.ylabel('time in seconds')
+    plt.title('Execution Time')
+    plt.legend()
+    plt.savefig(config.statistics.path.joinpath('execution_time.png'))
     plt.clf()
 
     # VBS percentage, x = qp
