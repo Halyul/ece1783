@@ -124,6 +124,8 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
 
     with config.output_path.split_counter_file.open('a') as f:
         total_blocks = (height // config.params.i) * (width // config.params.i)
+        f.write("{} {}\n".format(-1, sum(split_counter['counter'] for split_counter in split_counters) /
+                (total_blocks * len(split_counters)) * 100))
         for split_counter in split_counters:
             f.write("{} {}\n".format(split_counter['index'], split_counter['counter'] / total_blocks * 100))
 
