@@ -4,6 +4,7 @@ from lib.config.config import Config
 from lib.signal_processing import psnr
 import matplotlib.pyplot as plt
 import time
+import math
 
 if __name__ == '__main__':
     config = Config('config.yaml')
@@ -60,8 +61,7 @@ if __name__ == '__main__':
 
     for i in range(len(params_overrides)):
         results.append([])
-        # params_qp_list = range(0, int(math.log2(params_i) + 8))
-        params_qp_list = [1,4,7,10]
+        params_qp_list = range(0, int(math.log2(params_i) + 8))
         feature_set = params_overrides[i]
         for params_qp in params_qp_list:
             print("current run: set={}".format(str(feature_set)))
