@@ -15,7 +15,7 @@ def calculate_mv_dispatcher(params: Params, *args, **kwargs):
         return calc_full_range_motion_vector(*args, **kwargs)
 
 def rdo(original_block: np.ndarray, reconstructed_block: np.ndarray, qtc_block: QTCBlock, mv: MotionVector, params_qp: int, is_intraframe=False):
-    lambda_value = 0.5 ** ((params_qp - 12) / 3) * 0.85
+    lambda_value = 0.5 ** ((params_qp - 12) / 3) * 5
     sad_value = np.abs(original_block - reconstructed_block).sum()
     r_vaule = len(qtc_block.to_str()) + len(mv.to_str(is_intraframe))
     return sad_value + lambda_value * r_vaule

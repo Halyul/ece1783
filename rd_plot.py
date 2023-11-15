@@ -108,7 +108,6 @@ if __name__ == '__main__':
         combined_array = np.column_stack((x_axis, y_axis))
         plt.plot(combined_array[:, 0], combined_array[:, 1],
                  label="feature_set={}".format(i), marker='o')
-        plt.ticklabel_format(useOffset=False, style='plain')
     plt.xlabel('bitrate in bits')
     plt.ylabel('psnr in dB')
     plt.title('R-D Plot')
@@ -124,7 +123,6 @@ if __name__ == '__main__':
         combined_array = np.column_stack((x_axis, y_axis))
         plt.plot(combined_array[:, 0], combined_array[:, 1],
                  label="feature_set={}".format(i), marker='o')
-        plt.ticklabel_format(useOffset=False, style='plain')
     plt.xlabel('bitrate in bits')
     plt.ylabel('time in seconds')
     plt.title('Execution Time')
@@ -137,10 +135,7 @@ if __name__ == '__main__':
     x_axis = [data['qp'] for data in points]
     y_axis = [data['split_percentage'] for data in points]
     combined_array = np.column_stack((x_axis, y_axis))
-    fig, ax = plt.subplots()
     plt.plot(combined_array[:, 0], combined_array[:, 1], marker='o') 
-    ax.set_xticks(x_axis)
-    ax.set_yticks(y_axis)
     plt.xlabel('tested qp values')
     plt.ylabel('percentage in %')
     plt.title('VBS percentage, x = qp')
@@ -155,12 +150,9 @@ if __name__ == '__main__':
     x_axis = [data['size'] for data in data]
     y_axis = [data['split_percentage'] for data in data]
     combined_array = np.column_stack((x_axis, y_axis))
-    fig, ax = plt.subplots()
     plt.plot(combined_array[:, 0], combined_array[:, 1], marker='o')
-    ax.set_yticks(y_axis)
     plt.xlabel('bitrate in bits')
     plt.ylabel('percentage in %')
     plt.title('VBS percentage, x = bitrate')
-    plt.ticklabel_format(useOffset=False, style='plain')
     plt.savefig(config.statistics.path.joinpath('vbs_percentage_size.png'))
     plt.clf()
