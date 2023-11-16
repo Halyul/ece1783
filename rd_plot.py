@@ -21,36 +21,48 @@ if __name__ == '__main__':
     stop_at = 10
     params_overrides = [
         dict(
+            i=params_i,
+            r=params_r,
             nRefFrames=1,
             VBSEnable=False,
             FMEEnable=False,
             FastME=False,
         ),
         dict(
+            i=params_i,
+            r=params_r,
             nRefFrames=4,
             VBSEnable=False,
             FMEEnable=False,
             FastME=False,
         ),
         dict(
+            i=params_i,
+            r=params_r,
             nRefFrames=1,
             VBSEnable=True,
             FMEEnable=False,
             FastME=False,
         ),
         # dict(
+        #     i=params_i,
+        #     r=params_r,
         #     nRefFrames=1,
         #     VBSEnable=False,
         #     FMEEnable=True,
         #     FastME=False,
         # ),
         dict(
+            i=params_i,
+            r=params_r,
             nRefFrames=1,
             VBSEnable=False,
             FMEEnable=False,
             FastME=True,
         ),
         # dict(
+        #     i=params_i,
+        #     r=params_r,
         #     nRefFrames=4,
         #     VBSEnable=True,
         #     FMEEnable=True,
@@ -61,14 +73,16 @@ if __name__ == '__main__':
 
     for i in range(len(params_overrides)):
         results.append([])
-        params_qp_list = range(0, int(math.log2(params_i) + 8))
         feature_set = params_overrides[i]
+        params_qp_list = range(0, int(math.log2(feature_set['i']) + 8))
         for params_qp in params_qp_list:
             print("current run: set={}".format(str(feature_set)))
             start = time.time()
             reader = YUVProcessor('config.yaml', 
                                 config_override=dict(
                                     params=dict(
+                                        i_period=params_i_period,
+                                        stop_at=stop_at,
                                         qp=params_qp,
                                         **feature_set
                                     )
