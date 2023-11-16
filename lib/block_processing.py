@@ -8,19 +8,13 @@ from lib.components.qtc import QTCBlock, QTCFrame, quantization_matrix
 from lib.components.mv import MotionVector, MotionVectorFrame
 from lib.enums import VBSMarker
 
-def calculate_mv_dispatcher(params: Params, *args, **kwargs):
-    if params.FastME:
-        return calc_fast_motion_vector(*args, **kwargs)
-    else:
-        return calc_full_range_motion_vector(*args, **kwargs)
-
 def rdo(original_block: np.ndarray, reconstructed_block: np.ndarray, qtc_block: QTCBlock, mv: MotionVector, params_qp: int, is_intraframe=False):
     lambda_value = 0.5 ** ((params_qp - 12) / 3) * 5
     sad_value = np.abs(original_block - reconstructed_block).sum()
     r_vaule = len(qtc_block.to_str()) + len(mv.to_str(is_intraframe))
     return sad_value + lambda_value * r_vaule
 
-def interframe_vbs(coor_offset: tuple, original_block: np.ndarray, original_search_windows: list, reconstructed_block: np.ndarray, qtc_block: QTCBlock, diff_mv: MotionVector, params: Params):
+def interframe_vbs(coor_offset: tuple, original_block: np.ndarray, original_search_windows: list, reconstructed_block: np.ndarray, qtc_block: QTCBlock, diff_mv: MotionVector, prev_motion_vector: MotionVector, frame: Frame, params: Params):
     """
         Implementation verification pending
     """
@@ -28,23 +22,26 @@ def interframe_vbs(coor_offset: tuple, original_block: np.ndarray, original_sear
     subblock_params_i = params.i // 2
     q_matrix = quantization_matrix(subblock_params_i, params.qp - 1 if params.qp > 0 else 0)
     top_lefts = [(y, x) for y in range(0, original_block.shape[0], subblock_params_i) for x in range(0, original_block.shape[1], subblock_params_i)]
-    top_lefts_in_search_window = [(y + coor_offset[0], x + coor_offset[1]) for y, x in top_lefts]
+    top_lefts_in_search_window = [(y + coor_offset[0], x + coor_offset[1]) for y, x in top_lefts] if coor_offset is not None else None
     subblock_rdo_cost = 0
-    prev_motion_vector = diff_mv
     qtc_subblocks = []
     reconstructed_subblocks = []
     mv_subblocks = []
     residual_subblocks = []
     for centered_top_left_index in range(len(top_lefts)):
         centered_top_left = top_lefts[centered_top_left_index]
-        top_left_in_search_window = top_lefts_in_search_window[centered_top_left_index]
         centered_subblock = original_block[centered_top_left[0]:centered_top_left[0] + subblock_params_i, centered_top_left[1]:centered_top_left[1] + subblock_params_i]
-        top_left, bottom_right = extend_block(top_left_in_search_window, subblock_params_i, (params.r, params.r, params.r, params.r), original_block.shape)
-        search_windows = []
-        for original_search_window in original_search_windows:
-            search_window = original_search_window[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
-            search_windows.append(search_window)
-        min_motion_vector, min_block = calculate_mv_dispatcher(params, centered_subblock, top_left_in_search_window, search_windows, top_left, subblock_params_i)
+        if params.FastME:
+            min_motion_vector, min_block = calc_fast_motion_vector(centered_subblock, centered_top_left, frame, subblock_params_i, prev_motion_vector)
+        else:
+            top_left_in_search_window = top_lefts_in_search_window[centered_top_left_index]
+            top_left, bottom_right = extend_block(top_left_in_search_window, subblock_params_i, (params.r, params.r, params.r, params.r), original_block.shape)
+            search_windows = []
+            for original_search_window in original_search_windows:
+                search_window = original_search_window[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
+                search_windows.append(search_window)
+            min_motion_vector, min_block = calc_full_range_motion_vector(centered_subblock, top_left_in_search_window, search_windows, top_left, subblock_params_i)
+
         qtc_subblock = QTCBlock(block=centered_subblock - min_block, q_matrix=q_matrix)
         qtc_subblock.block_to_qtc()
         residual_subblocks.append(qtc_subblock.block)
@@ -133,22 +130,95 @@ def intraframe_vbs(current_coor:tuple, original_block: np.ndarray, reconstructed
     else:
         return qtc_block, reconstructed_block, None
 
-"""
-    Nearest Neighbors search is a requirement, with MVP being the MV of the latest encoded block (MVP =(0,0) for first block in every row of (𝑖 × 𝑖) blocks). Note: any candidate block that partially or fully exists outside of the frame is not searched. Lecture 6
+def calc_fast_motion_vector(block: np.ndarray, block_coor: tuple, frame: Frame, params_i, mvp) -> tuple:
+    """
+        Nearest Neighbors search is a requirement, with MVP being the MV of the latest encoded block (MVP =(0,0) for first block in every row of (𝑖 × 𝑖) blocks). Note: any candidate block that partially or fully exists outside of the frame is not searched. Lecture 6
 
-    Parameters:
-        block (np.ndarray): The block.
-        block_coor (tuple): The top left coordinates of block.
-        search_windows (list): A list of search windows.
-        search_window_coor (tuple): The top left coordinates of search window.
-        params_i (int): The block size.
+        Parameters:
+            block (np.ndarray): The block.
+            block_coor (tuple): The top left coordinates of block.
+            frame (Frame): The current frame.
+            params_i (int): The block size.
+            mvp (MotionVector): The motion vector predictor.
+        
+        Returns:
+            min_motion_vector (MotionVector): The motion vector object.
+            min_block (np.ndarray): The block from the search window.
+    """
+    min_motion_vector = None
+    min_yx = None
+    min_block = None
+    mvp = MotionVector(0, 0) if mvp is None else mvp
+
+    # baseline
+    top_left, bottom_right = extend_block(block_coor, params_i, (0, 0, 0, 0), frame.shape)
+    search_windows = []
+    current_frame = frame
+    while current_frame.prev is not None:
+        search_window = current_frame.prev.raw[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
+        search_windows.append(search_window)
+        current_frame = current_frame.prev
     
-    Returns:
-        min_motion_vector (MotionVector): The motion vector object.
-        min_block (np.ndarray): The block from the search window.
-"""
-def calc_fast_motion_vector(block: np.ndarray, block_coor: tuple, search_windows: list, search_window_coor: tuple, params_i: int) -> tuple:
-    pass
+    baseline_motion_vector, baseline_block = calc_full_range_motion_vector(block, block_coor, search_windows, top_left, params_i)
+    min_motion_vector = baseline_motion_vector
+    min_yx = block_coor
+    min_block = baseline_block
+
+    flag = False
+    while not flag:
+        # search mvp
+        new_coor = (block_coor[0] + min_motion_vector.y, block_coor[1] + min_motion_vector.x)
+
+        # generate 5 coor
+        coors = [
+            (new_coor[0], new_coor[1]),
+            (new_coor[0] - 1, new_coor[1]),
+            (new_coor[0] + 1, new_coor[1]),
+            (new_coor[0], new_coor[1] - 1),
+            (new_coor[0], new_coor[1] + 1),
+        ]
+        for current_coor in coors:
+            if current_coor[0] < 0 or current_coor[1] < 0 or current_coor[0] + params_i > frame.shape[0] or current_coor[1] + params_i > frame.shape[1] or (current_coor[0] == block_coor[0] and current_coor[1] == block_coor[1]):
+                continue
+            top_left, bottom_right = extend_block(current_coor, params_i, (0, 0, 0, 0), frame.shape)
+            search_windows = []
+            current_frame = frame
+            while current_frame.prev is not None:
+                search_window = current_frame.prev.raw[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
+                search_windows.append(search_window)
+                current_frame = current_frame.prev
+
+            current_min_motion_vector, current_min_block = calc_full_range_motion_vector(block, block_coor, search_windows, top_left, params_i)
+
+            if current_min_motion_vector.mae < min_motion_vector.mae:
+                min_motion_vector = current_min_motion_vector
+                min_yx = current_coor
+                min_block = current_min_block
+            elif current_min_motion_vector.mae == min_motion_vector.mae:
+                current_min_l1_norm = current_min_motion_vector.l1_norm()
+                new_min_l1_norm = min_motion_vector.l1_norm()
+                if new_min_l1_norm < current_min_l1_norm:
+                    min_motion_vector = current_min_motion_vector
+                    min_yx = current_coor
+                    min_block = current_min_block
+                elif new_min_l1_norm == current_min_l1_norm:
+                    if current_coor[0] < min_yx[0]:
+                        min_motion_vector = current_min_motion_vector
+                        min_yx = current_coor
+                        min_block = current_min_block
+                    elif current_coor[0] == min_yx[0]:
+                        if current_coor[1] < min_yx[1]:
+                            min_motion_vector = current_min_motion_vector
+                            min_yx = current_coor
+                            min_block = current_min_block
+            
+        if min_motion_vector == baseline_motion_vector:
+            flag = True
+            break
+        else:
+            baseline_motion_vector = min_motion_vector
+            mvp = min_motion_vector
+    return min_motion_vector, min_block
 
 """
     Calculate the motion vector for a block from the search window.
@@ -328,15 +398,21 @@ def mv_parallel_helper(index: int, frame: Frame, params: Params, q_matrix: np.nd
         centered_top_left = (y, x)
         centered_block = frame.raw[centered_top_left[0]:centered_top_left[0] + frame.params_i, centered_top_left[1]:centered_top_left[1] + frame.params_i]
 
-        top_left, bottom_right = extend_block(centered_top_left, frame.params_i, (params.r, params.r, params.r, params.r), frame.shape)
+        top_left = None
+        search_windows = None
+
+        if params.FastME:
+            min_motion_vector, min_block = calc_fast_motion_vector(centered_block, centered_top_left, frame, frame.params_i, prev_motion_vector)
+        else:
+            top_left, bottom_right = extend_block(centered_top_left, frame.params_i, (params.r, params.r, params.r, params.r), frame.shape)
         
-        current_frame = frame
-        search_windows = []
-        while current_frame.prev is not None:
-            search_window = current_frame.prev.raw[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
-            search_windows.append(search_window)
-            current_frame = current_frame.prev
-        min_motion_vector, min_block = calculate_mv_dispatcher(params, centered_block, centered_top_left, search_windows, top_left, frame.params_i)
+            current_frame = frame
+            search_windows = []
+            while current_frame.prev is not None:
+                search_window = current_frame.prev.raw[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
+                search_windows.append(search_window)
+                current_frame = current_frame.prev
+            min_motion_vector, min_block = calc_full_range_motion_vector(centered_block, centered_top_left, search_windows, top_left, frame.params_i)
 
         qtc_block = QTCBlock(block=centered_block - min_block, q_matrix=q_matrix)
         qtc_block.block_to_qtc()
@@ -345,8 +421,8 @@ def mv_parallel_helper(index: int, frame: Frame, params: Params, q_matrix: np.nd
         prev_motion_vector = min_motion_vector
 
         if params.VBSEnable:
-            coor_offset = (centered_top_left[0] - top_left[0], centered_top_left[1] - top_left[1])
-            vbs_qtc_block, vbs_reconstructed_block, vbs_mv = interframe_vbs(coor_offset, centered_block, search_windows, reconstructed_block, qtc_block, diff_mv, params)
+            coor_offset = (centered_top_left[0] - top_left[0], centered_top_left[1] - top_left[1]) if top_left is not None else None
+            vbs_qtc_block, vbs_reconstructed_block, vbs_mv = interframe_vbs(coor_offset, centered_block, search_windows, reconstructed_block, qtc_block, diff_mv, prev_motion_vector, frame, params)
             reconstructed_block = vbs_reconstructed_block
             if vbs_mv is not None:
                 qtc_block = dict(

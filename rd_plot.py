@@ -44,12 +44,12 @@ if __name__ == '__main__':
         #     FMEEnable=True,
         #     FastME=False,
         # ),
-        # dict(
-        #     nRefFrames=1,
-        #     VBSEnable=False,
-        #     FMEEnable=False,
-        #     FastME=True,
-        # ),
+        dict(
+            nRefFrames=1,
+            VBSEnable=False,
+            FMEEnable=False,
+            FastME=True,
+        ),
         # dict(
         #     nRefFrames=4,
         #     VBSEnable=True,

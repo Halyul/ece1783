@@ -26,6 +26,11 @@ class MotionVector:
     def __sub__(self, other):
         return MotionVector(self.y - other.y, self.x - other.x, self.ref_offset - other.ref_offset)
     
+    def __eq__(self, __value: object) -> bool:
+        if not isinstance(__value, MotionVector):
+            return False
+        return (self.y == __value.y and self.x == __value.x and self.ref_offset == __value.ref_offset)
+    
     def to_str(self, is_intraframe=False) -> str:
         return exp_golomb_encoding(self.y) if is_intraframe else '{}{}{}'.format(exp_golomb_encoding(self.y), exp_golomb_encoding(self.x), exp_golomb_encoding(self.ref_offset))
     

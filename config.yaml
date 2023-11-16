@@ -22,7 +22,7 @@ params:
   qp: 1
   i_period: 8
   nRefFrames: 2 # 1, 2, 3, 4
-  VBSEnable: true # true, false
+  VBSEnable: false # true, false
   FMEEnable: false # true, false
   FastME: false # true, false
 
