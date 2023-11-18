@@ -2,7 +2,6 @@ import numpy as np
 from lib.utils.misc import *
 import pathlib
 from matplotlib import pyplot as plt
-from lib.utils.entropy import *
 from lib.utils.misc import *
 from lib.config.config import Config
 
@@ -46,5 +45,4 @@ a[:, :, 0] = [
     [132 133 134 135 136 137 138 139 140 141 142 143]
 ]
 """
-c = Config('config.yaml')
-print(c)
+b = a[:, :, 0]

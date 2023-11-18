@@ -94,7 +94,7 @@ class YUVProcessor:
         self.__read_header()
         self.__read_frames()
         self.info['frame_count'] = self.__frame_index
-        self.__config.output_path.meta_file.write_text(str("{},{},{},{},{},{},{}".format(self.__frame_index, self.info['paded_height'], self.info['paded_width'], self.__config.params.i, self.__config.params.qp, self.__config.params.nRefFrames, int(self.__config.params.VBSEnable))))
+        self.__config.output_path.meta_file.write_text(str("{},{},{},{},{},{},{},{}".format(self.__frame_index, self.info['paded_height'], self.info['paded_width'], self.__config.params.i, self.__config.params.qp, self.__config.params.nRefFrames, int(self.__config.params.VBSEnable), int(self.__config.params.FMEEnable))))
 
         self.__mp.done()
     

@@ -31,15 +31,17 @@ class MotionVector:
             return False
         return (self.y == __value.y and self.x == __value.x and self.ref_offset == __value.ref_offset)
     
-    def to_str(self, is_intraframe=False) -> str:
-        return exp_golomb_encoding(self.y) if is_intraframe else '{}{}{}'.format(exp_golomb_encoding(self.y), exp_golomb_encoding(self.x), exp_golomb_encoding(self.ref_offset))
+    def to_str(self, is_intraframe=False, fme_enabled=False) -> str:
+        multiplier = 2 if fme_enabled else 1
+        return exp_golomb_encoding(int(self.y * multiplier)) if is_intraframe else '{}{}{}'.format(exp_golomb_encoding(int(self.y * multiplier)), exp_golomb_encoding(int(self.x * multiplier)), exp_golomb_encoding(self.ref_offset))
     
 class MotionVectorFrame:
 
-    def __init__(self, is_intraframe=False, length=0, vbs_enable=False):
+    def __init__(self, is_intraframe=False, length=0, vbs_enable=False, fme_enable=False):
         self.is_intraframe = is_intraframe
         self.raw = [None] * length
         self.vbs_enable = vbs_enable
+        self.fme_enable = fme_enable
 
     def new_row(self):
         """
@@ -129,7 +131,7 @@ class MotionVectorFrame:
                     elif vbs is VBSMarker.UNSPLIT:
                         diff_mv = block - prev_mv
                         prev_mv = block
-                        text += '{}{}'.format(exp_golomb_encoding(VBSMarker.UNSPLIT.value), diff_mv.to_str(self.is_intraframe))
+                        text += '{}{}'.format(exp_golomb_encoding(VBSMarker.UNSPLIT.value), diff_mv.to_str(self.is_intraframe, fme_enabled=self.fme_enable))
 
                     else:
                         raise Exception('Invalid VBS Marker')
@@ -138,7 +140,7 @@ class MotionVectorFrame:
                 for j in range(len(self.raw[i])):
                     diff_mv = self.raw[i][j] - prev_mv
                     prev_mv = self.raw[i][j]
-                    text += diff_mv.to_str(self.is_intraframe)
+                    text += diff_mv.to_str(self.is_intraframe, fme_enabled=self.fme_enable)
         return binstr_to_bytes(text)
         # return text
 
@@ -215,12 +217,18 @@ class MotionVectorFrame:
                             predictor=[]
                         )
                         for _ in range(4):
-                            mv_a = prev_mv + MotionVector(mv[index_counter], mv[index_counter + 1], mv[index_counter + 2])
+                            if self.fme_enable:
+                                mv_a = prev_mv + MotionVector(mv[index_counter] / 2, mv[index_counter + 1] / 2, mv[index_counter + 2])
+                            else:
+                                mv_a = prev_mv + MotionVector(mv[index_counter], mv[index_counter + 1], mv[index_counter + 2])
                             prev_mv = mv_a
                             current_mv['predictor'].append(mv_a)
                             index_counter += 3
                     elif vbs is VBSMarker.UNSPLIT:
-                        mv_a = prev_mv + MotionVector(mv[index_counter], mv[index_counter + 1], mv[index_counter + 2])
+                        if self.fme_enable:
+                            mv_a = prev_mv + MotionVector(mv[index_counter] / 2, mv[index_counter + 1] / 2, mv[index_counter + 2])
+                        else:
+                            mv_a = prev_mv + MotionVector(mv[index_counter], mv[index_counter + 1], mv[index_counter + 2])
                         prev_mv = mv_a
                         current_mv = dict(
                             vbs=VBSMarker.UNSPLIT,
@@ -230,7 +238,10 @@ class MotionVectorFrame:
                     else:
                         raise Exception('Invalid VBS Marker')
                 else:
-                    current_mv = prev_mv + MotionVector(mv[index_counter], mv[index_counter + 1], mv[index_counter + 2])
+                    if self.fme_enable:
+                        current_mv = prev_mv + MotionVector(mv[index_counter] / 2, mv[index_counter + 1] / 2, mv[index_counter + 2])
+                    else:
+                        current_mv = prev_mv + MotionVector(mv[index_counter], mv[index_counter + 1], mv[index_counter + 2])
                     prev_mv = current_mv
                     index_counter += 3
                 self.append(current_mv)

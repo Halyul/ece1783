@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 from lib.config.config import Config
-import pathlib
 import numpy as np
 
 config = Config('config.yaml')

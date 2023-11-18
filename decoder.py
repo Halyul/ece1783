@@ -5,7 +5,7 @@ from lib.components.frame import Frame, extend_block
 from lib.components.qtc import QTCFrame, quantization_matrix
 from lib.components.mv import MotionVectorFrame
 import numpy as np
-import time
+import time, math
 
 """
     Construct the predicted frame from the motion vector dump.
@@ -19,7 +19,7 @@ import time
     Returns:
         (np.ndarray): The reconstructed frame.
 """
-def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=False) -> np.ndarray:
+def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=False, fme_enable=False) -> np.ndarray:
     y_counter = 0
     x_counter = 0
     if frame.is_intraframe:
@@ -93,6 +93,8 @@ def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=Fal
         for i in range(len(mv_dump.raw)):
             predicted_frame_dump.append([])
             for j in range(len(mv_dump.raw[i])):
+                if j == 9 and i == 8:
+                    print('')
                 current_frame = frame.prev
                 if vbs_enable:
                     item = mv_dump.raw[i][j]
@@ -120,7 +122,50 @@ def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=Fal
                     top_left = mv_dump.raw[i][j].raw
                     for _ in range(mv_dump.raw[i][j].ref_offset):
                         current_frame = current_frame.prev
-                    predicted_frame_dump[i].append(current_frame.raw[y_counter + top_left[0]:y_counter + top_left[0] + params_i, x_counter + top_left[1]:x_counter + top_left[1] + params_i])
+                    if fme_enable:
+                        mv_y: float = top_left[0]
+                        mv_x: float = top_left[1]
+                        is_y_interpolate = not mv_y.is_integer()
+                        is_x_interpolate = not mv_x.is_integer()
+                        if is_y_interpolate or is_x_interpolate:
+                            if is_y_interpolate and not is_x_interpolate:
+                                top_y = math.floor(mv_y)
+                                bottom_y = math.ceil(mv_y)
+                                mv_x = int(mv_x)
+                                top_block = current_frame.raw[y_counter + top_y:y_counter + top_y + params_i, x_counter + mv_x:x_counter + mv_x + params_i].astype(float)
+                                bottom_block = current_frame.raw[y_counter + bottom_y:y_counter + bottom_y + params_i, x_counter + mv_x:x_counter + mv_x + params_i].astype(float)
+                                y_middle_block = (top_block + bottom_block) / 2
+                                predicted_frame_dump[i].append(y_middle_block.astype(np.uint8))
+                            elif is_x_interpolate and not is_y_interpolate:
+                                left_x = math.floor(mv_x)
+                                right_x = math.ceil(mv_x)
+                                mv_y = int(mv_y)
+                                left_block = current_frame.raw[y_counter + mv_y:y_counter + mv_y + params_i, x_counter + left_x:x_counter + left_x + params_i].astype(float)
+                                right_block = current_frame.raw[y_counter + mv_y:y_counter + mv_y + params_i, x_counter + right_x:x_counter + right_x + params_i].astype(float)
+                                x_middle_block = (left_block + right_block) / 2
+                                predicted_frame_dump[i].append(x_middle_block.astype(np.uint8))
+                            else:
+                                top_y = math.floor(mv_y)
+                                bottom_y = math.ceil(mv_y)
+                                left_x = math.floor(mv_x)
+                                right_x = math.ceil(mv_x)
+                                top_left_block = current_frame.raw[y_counter + top_y:y_counter + top_y + params_i, x_counter + left_x:x_counter + left_x + params_i].astype(float)
+                                top_right_block = current_frame.raw[y_counter + top_y:y_counter + top_y + params_i, x_counter + right_x:x_counter + right_x + params_i].astype(float)
+                                bottom_left_block = current_frame.raw[y_counter + bottom_y:y_counter + bottom_y + params_i, x_counter + left_x:x_counter + left_x + params_i].astype(float)
+                                bottom_right_block = current_frame.raw[y_counter + bottom_y:y_counter + bottom_y + params_i, x_counter + right_x:x_counter + right_x + params_i].astype(float)
+                                y_middle_left_block = (top_left_block + bottom_left_block) / 2
+                                y_middle_right_block = (top_right_block + bottom_right_block) / 2
+                                y_middle_block = ((y_middle_left_block + y_middle_right_block) / 2)
+                                x_middle_top_block = (top_left_block + top_right_block) / 2
+                                x_middle_bottom_block = (bottom_left_block + bottom_right_block) / 2
+                                x_middle_block = ((x_middle_top_block + x_middle_bottom_block) / 2)
+                                predicted_frame_dump[i].append(((y_middle_block + x_middle_block) / 2).astype(np.uint8))
+                        else:
+                            mv_y = int(mv_y)
+                            mv_x = int(mv_x)
+                            predicted_frame_dump[i].append(current_frame.raw[y_counter + mv_y:y_counter + mv_y + params_i, x_counter + mv_x:x_counter + mv_x + params_i])
+                    else:
+                        predicted_frame_dump[i].append(current_frame.raw[y_counter + top_left[0]:y_counter + top_left[0] + params_i, x_counter + top_left[1]:x_counter + top_left[1] + params_i])
                 x_counter += params_i
             y_counter += params_i
             x_counter = 0
@@ -148,12 +193,13 @@ if __name__ == '__main__':
     params_qp = int(l[4])
     nRefFrames = int(l[5])
     VBSEnabled = bool(int(l[6]))
+    FMEEnabled = bool(int(l[7]))
     q_matrix = quantization_matrix(params_i, params_qp)
     read_frame_counter = 0
     prev_frame = None
     while read_frame_counter < total_frames:
         mv_file = mv_path.joinpath('{}'.format(read_frame_counter))
-        mv_dump = MotionVectorFrame(vbs_enable=VBSEnabled)
+        mv_dump = MotionVectorFrame(vbs_enable=VBSEnabled, fme_enable=FMEEnabled)
         mv_dump.read_from_file(mv_file, width, params_i)
 
         frame = Frame(read_frame_counter, height, width, params_i, mv_dump.is_intraframe)
@@ -165,7 +211,10 @@ if __name__ == '__main__':
         qtc_frame.read_from_file(qtc_file, q_matrix, width, params_qp)
         residual_frame = qtc_frame.to_residual_frame()
 
-        frame = construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=VBSEnabled)
+        if read_frame_counter == 3:
+            print('')
+
+        frame = construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=VBSEnabled, fme_enable=FMEEnabled)
         frame.convert_within_range()
         frame.dump(output_path.joinpath('{}'.format(read_frame_counter)))
 

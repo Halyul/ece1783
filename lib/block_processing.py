@@ -1,6 +1,8 @@
 import numpy as np
 from multiprocessing import Pool
 from pathlib import Path
+
+from scipy import interpolate
 from lib.config.config import Params
 from lib.enums import Intraframe
 from lib.components.frame import Frame, extend_block
@@ -32,7 +34,7 @@ def interframe_vbs(coor_offset: tuple, original_block: np.ndarray, original_sear
         centered_top_left = top_lefts[centered_top_left_index]
         centered_subblock = original_block[centered_top_left[0]:centered_top_left[0] + subblock_params_i, centered_top_left[1]:centered_top_left[1] + subblock_params_i]
         if params.FastME:
-            min_motion_vector, min_block = calc_fast_motion_vector(centered_subblock, centered_top_left, frame, subblock_params_i, prev_motion_vector)
+            min_motion_vector, min_block = calc_fast_motion_vector(centered_subblock, centered_top_left, frame, subblock_params_i, params, prev_motion_vector)
         else:
             top_left_in_search_window = top_lefts_in_search_window[centered_top_left_index]
             top_left, bottom_right = extend_block(top_left_in_search_window, subblock_params_i, (params.r, params.r, params.r, params.r), original_block.shape)
@@ -40,7 +42,7 @@ def interframe_vbs(coor_offset: tuple, original_block: np.ndarray, original_sear
             for original_search_window in original_search_windows:
                 search_window = original_search_window[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
                 search_windows.append(search_window)
-            min_motion_vector, min_block = calc_full_range_motion_vector(centered_subblock, top_left_in_search_window, search_windows, top_left, subblock_params_i)
+            min_motion_vector, min_block = calc_full_range_motion_vector(centered_subblock, top_left_in_search_window, search_windows, top_left, subblock_params_i, params.FMEEnable)
 
         qtc_subblock = QTCBlock(block=centered_subblock - min_block, q_matrix=q_matrix)
         qtc_subblock.block_to_qtc()
@@ -130,7 +132,7 @@ def intraframe_vbs(current_coor:tuple, original_block: np.ndarray, reconstructed
     else:
         return qtc_block, reconstructed_block, None
 
-def calc_fast_motion_vector(block: np.ndarray, block_coor: tuple, frame: Frame, params_i, mvp) -> tuple:
+def calc_fast_motion_vector(block: np.ndarray, block_coor: tuple, frame: Frame, params_i, params, mvp) -> tuple:
     """
         Nearest Neighbors search is a requirement, with MVP being the MV of the latest encoded block (MVP =(0,0) for first block in every row of (𝑖 × 𝑖) blocks). Note: any candidate block that partially or fully exists outside of the frame is not searched. Lecture 6
 
@@ -159,7 +161,7 @@ def calc_fast_motion_vector(block: np.ndarray, block_coor: tuple, frame: Frame, 
         search_windows.append(search_window)
         current_frame = current_frame.prev
     
-    baseline_motion_vector, baseline_block = calc_full_range_motion_vector(block, block_coor, search_windows, top_left, params_i)
+    baseline_motion_vector, baseline_block = calc_full_range_motion_vector(block, block_coor, search_windows, top_left, params_i, params.FMEEnable)
     min_motion_vector = baseline_motion_vector
     min_yx = block_coor
     min_block = baseline_block
@@ -188,7 +190,7 @@ def calc_fast_motion_vector(block: np.ndarray, block_coor: tuple, frame: Frame, 
                 search_windows.append(search_window)
                 current_frame = current_frame.prev
 
-            current_min_motion_vector, current_min_block = calc_full_range_motion_vector(block, block_coor, search_windows, top_left, params_i)
+            current_min_motion_vector, current_min_block = calc_full_range_motion_vector(block, block_coor, search_windows, top_left, params_i, params.FMEEnable)
 
             if current_min_motion_vector.mae < min_motion_vector.mae:
                 min_motion_vector = current_min_motion_vector
@@ -234,47 +236,95 @@ def calc_fast_motion_vector(block: np.ndarray, block_coor: tuple, frame: Frame, 
         min_motion_vector (MotionVector): The motion vector object.
         min_block (np.ndarray): The block from the search window.
 """
-def calc_full_range_motion_vector(block: np.ndarray, block_coor: tuple, search_windows: list, search_window_coor: tuple, params_i: int) -> tuple:
+def calc_full_range_motion_vector(block: np.ndarray, block_coor: tuple, search_windows: list, search_window_coor: tuple, params_i: int, FMEEnable: bool) -> tuple:
     min_motion_vector = None
     min_yx = None
     block_reshaped = block.reshape(params_i * params_i)
     min_block = None
     for search_windows_index in range(len(search_windows)):
-        search_window = search_windows[search_windows_index]
-        for y in range(0, search_window.shape[0] - params_i + 1):
-            actual_y = y + search_window_coor[0]
-            for x in range(0, search_window.shape[1] - params_i + 1):
-                actual_x = x + search_window_coor[1]
-                a = search_window[y:params_i + y, x:params_i + x]
-                b = a.reshape(params_i * params_i)
-                motion_vector = MotionVector(actual_y - block_coor[0], actual_x - block_coor[1], ref_offset=search_windows_index, mae=np.abs(b - block_reshaped).mean())
-                if min_motion_vector == None:
+        current_search_window = search_windows[search_windows_index]
+        search_window_list = interpolate_search_window(current_search_window, search_window_coor, params_i, block_coor, FMEEnable)
+        for search_block_dict in search_window_list:
+            actual_y, actual_x = search_block_dict['actual_yx']
+            offset = (actual_y - block_coor[0], actual_x - block_coor[1])
+            search_block = (search_block_dict['block']).astype(np.uint8)
+            motion_vector = MotionVector(offset[0], offset[1], ref_offset=search_windows_index, mae=np.abs(search_block.reshape(params_i * params_i) - block_reshaped).mean())
+            if min_motion_vector == None:
+                min_motion_vector = motion_vector
+                min_yx = (actual_y, actual_x)
+                min_block = search_block
+            elif motion_vector.mae < min_motion_vector.mae:
+                min_motion_vector = motion_vector
+                min_yx = (actual_y, actual_x)
+                min_block = search_block
+            elif motion_vector.mae == min_motion_vector.mae:
+                current_min_l1_norm = min_motion_vector.l1_norm()
+                new_min_l1_norm = motion_vector.l1_norm()
+                if new_min_l1_norm < current_min_l1_norm:
                     min_motion_vector = motion_vector
                     min_yx = (actual_y, actual_x)
-                    min_block = a
-                elif motion_vector.mae < min_motion_vector.mae:
-                    min_motion_vector = motion_vector
-                    min_yx = (actual_y, actual_x)
-                    min_block = a
-                elif motion_vector.mae == min_motion_vector.mae:
-                    current_min_l1_norm = min_motion_vector.l1_norm()
-                    new_min_l1_norm = motion_vector.l1_norm()
-                    if new_min_l1_norm < current_min_l1_norm:
+                    min_block = search_block
+                elif new_min_l1_norm == current_min_l1_norm:
+                    if actual_y < min_yx[0]:
                         min_motion_vector = motion_vector
                         min_yx = (actual_y, actual_x)
-                        min_block = a
-                    elif new_min_l1_norm == current_min_l1_norm:
-                        if actual_y < min_yx[0]:
+                        min_block = search_block
+                    elif actual_y == min_yx[0]:
+                        if actual_x < min_yx[1]:
                             min_motion_vector = motion_vector
                             min_yx = (actual_y, actual_x)
-                            min_block = a
-                        elif actual_y == min_yx[0]:
-                            if actual_x < min_yx[1]:
-                                min_motion_vector = motion_vector
-                                min_yx = (actual_y, actual_x)
-                                min_block = a
+                            min_block = search_block
 
     return min_motion_vector, min_block
+
+def interpolate_search_window(search_window, search_window_coor, params_i, block_coor, FMEEnable):
+    search_window_list = []
+    for y in range(0, search_window.shape[0] - params_i + 1):
+        actual_y = y + search_window_coor[0]
+        search_window_list.append([])
+        for x in range(0, search_window.shape[1] - params_i + 1):
+            actual_x = x + search_window_coor[1]
+            a = search_window[y:params_i + y, x:params_i + x]
+            search_window_list[-1].append(dict(
+                block=a,
+                actual_yx=(actual_y, actual_x),
+                offset=(actual_y - block_coor[0], actual_x - block_coor[1])
+            ))
+
+    if FMEEnable:
+        row_length = len(search_window_list)
+        col_length = len(search_window_list[0])
+
+        #insert between columns
+        x_counter = 0
+        while x_counter < (col_length - 1) * 2:
+            for y in range(row_length):
+                left_search_block = search_window_list[y][x_counter]
+                right_search_block = search_window_list[y][x_counter + 1]
+                middle_search_block = (left_search_block['block'].astype(float) + right_search_block['block'].astype(float)) / 2
+                search_window_list[y].insert(x_counter + 1, dict(
+                    block=middle_search_block,
+                    actual_yx=(left_search_block['actual_yx'][0], left_search_block['actual_yx'][1] + 0.5),
+                    offset=(left_search_block['offset'][0], left_search_block['offset'][1] + 0.5)
+                ))
+            x_counter += 2
+        
+        #insert between rows
+        y_counter = 0
+        while y_counter < (row_length - 1) * 2:
+            search_window_list.insert(y_counter + 1, [])
+            for x in range(len(search_window_list[0])):
+                top_search_block = search_window_list[y_counter][x]
+                bottom_search_block = search_window_list[y_counter + 2][x]
+                middle_search_block = (top_search_block['block'].astype(float) + bottom_search_block['block'].astype(float)) / 2
+                search_window_list[y_counter + 1].append(dict(
+                    block=middle_search_block,
+                    actual_yx=(top_search_block['actual_yx'][0] + 0.5, top_search_block['actual_yx'][1]),
+                    offset=(top_search_block['offset'][0] + 0.5, top_search_block['offset'][1])
+                ))
+            y_counter += 2
+
+    return [item for sublist in search_window_list for item in sublist]
 
 """
     Calculate intra-frame prediction.
@@ -389,12 +439,16 @@ def intraframe_prediction(frame: Frame, q_matrix: np.ndarray, params: Params) ->
         reconstructed_block_dump (np.ndarray): The reconstructed blocks.
 """
 def mv_parallel_helper(index: int, frame: Frame, params: Params, q_matrix: np.ndarray, y: int) -> tuple:
+    if y == 128:
+        print('')
     qtc_block_dump = []
     mv_dump = []
     reconstructed_block_dump = []
     prev_motion_vector = None
     split_counter = 0
     for x in range(0, frame.width, frame.params_i):
+        if x == 144:
+            print('')
         centered_top_left = (y, x)
         centered_block = frame.raw[centered_top_left[0]:centered_top_left[0] + frame.params_i, centered_top_left[1]:centered_top_left[1] + frame.params_i]
 
@@ -402,7 +456,7 @@ def mv_parallel_helper(index: int, frame: Frame, params: Params, q_matrix: np.nd
         search_windows = None
 
         if params.FastME:
-            min_motion_vector, min_block = calc_fast_motion_vector(centered_block, centered_top_left, frame, frame.params_i, prev_motion_vector)
+            min_motion_vector, min_block = calc_fast_motion_vector(centered_block, centered_top_left, frame, frame.params_i, params, prev_motion_vector)
         else:
             top_left, bottom_right = extend_block(centered_top_left, frame.params_i, (params.r, params.r, params.r, params.r), frame.shape)
         
@@ -412,7 +466,7 @@ def mv_parallel_helper(index: int, frame: Frame, params: Params, q_matrix: np.nd
                 search_window = current_frame.prev.raw[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
                 search_windows.append(search_window)
                 current_frame = current_frame.prev
-            min_motion_vector, min_block = calc_full_range_motion_vector(centered_block, centered_top_left, search_windows, top_left, frame.params_i)
+            min_motion_vector, min_block = calc_full_range_motion_vector(centered_block, centered_top_left, search_windows, top_left, frame.params_i, params.FMEEnable)
 
         qtc_block = QTCBlock(block=centered_block - min_block, q_matrix=q_matrix)
         qtc_block.block_to_qtc()
@@ -493,7 +547,7 @@ def calc_motion_vector_parallel_helper(frame: Frame, params: Params, q_matrix: n
         
         results.sort(key=lambda x: x[0])
         qtc_block_dump = QTCFrame(length=len(results), vbs_enable=params.VBSEnable)
-        mv_dump = MotionVectorFrame(length=len(results), vbs_enable=params.VBSEnable)
+        mv_dump = MotionVectorFrame(length=len(results), vbs_enable=params.VBSEnable, fme_enable=params.FMEEnable)
         reconstructed_block_dump = [None] * len(results)
         split_counter = 0
         for result in results:
