@@ -2,7 +2,6 @@ import numpy as np
 from multiprocessing import Pool
 from pathlib import Path
 
-from scipy import interpolate
 from lib.config.config import Params
 from lib.enums import Intraframe
 from lib.components.frame import Frame, extend_block
@@ -161,7 +160,7 @@ def calc_fast_motion_vector(block: np.ndarray, block_coor: tuple, frame: Frame, 
         search_windows.append(search_window)
         current_frame = current_frame.prev
     
-    baseline_motion_vector, baseline_block = calc_full_range_motion_vector(block, block_coor, search_windows, top_left, params_i, params.FMEEnable)
+    baseline_motion_vector, baseline_block = calc_full_range_motion_vector(block, block_coor, search_windows, top_left, params_i, False)
     min_motion_vector = baseline_motion_vector
     min_yx = block_coor
     min_block = baseline_block
@@ -169,7 +168,7 @@ def calc_fast_motion_vector(block: np.ndarray, block_coor: tuple, frame: Frame, 
     flag = False
     while not flag:
         # search mvp
-        new_coor = (block_coor[0] + min_motion_vector.y, block_coor[1] + min_motion_vector.x)
+        new_coor = (block_coor[0] + mvp.y, block_coor[1] + mvp.x)
 
         # generate 5 coor
         coors = [
@@ -179,6 +178,7 @@ def calc_fast_motion_vector(block: np.ndarray, block_coor: tuple, frame: Frame, 
             (new_coor[0], new_coor[1] - 1),
             (new_coor[0], new_coor[1] + 1),
         ]
+        center_top_left, center_bottom_right = extend_block(coors[0], params_i, (0, 0, 0, 0), frame.shape)
         for current_coor in coors:
             if current_coor[0] < 0 or current_coor[1] < 0 or current_coor[0] + params_i > frame.shape[0] or current_coor[1] + params_i > frame.shape[1] or (current_coor[0] == block_coor[0] and current_coor[1] == block_coor[1]):
                 continue
@@ -190,7 +190,7 @@ def calc_fast_motion_vector(block: np.ndarray, block_coor: tuple, frame: Frame, 
                 search_windows.append(search_window)
                 current_frame = current_frame.prev
 
-            current_min_motion_vector, current_min_block = calc_full_range_motion_vector(block, block_coor, search_windows, top_left, params_i, params.FMEEnable)
+            current_min_motion_vector, current_min_block = calc_full_range_motion_vector(block, block_coor, search_windows, top_left, params_i, False)
 
             if current_min_motion_vector.mae < min_motion_vector.mae:
                 min_motion_vector = current_min_motion_vector
@@ -439,7 +439,7 @@ def intraframe_prediction(frame: Frame, q_matrix: np.ndarray, params: Params) ->
         reconstructed_block_dump (np.ndarray): The reconstructed blocks.
 """
 def mv_parallel_helper(index: int, frame: Frame, params: Params, q_matrix: np.ndarray, y: int) -> tuple:
-    if y == 16 and frame.index == 2:
+    if y == 16 and frame.index == 1:
         print('')
     qtc_block_dump = []
     mv_dump = []
