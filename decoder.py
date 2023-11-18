@@ -5,7 +5,8 @@ from lib.components.frame import Frame, extend_block
 from lib.components.qtc import QTCFrame, quantization_matrix
 from lib.components.mv import MotionVectorFrame
 import numpy as np
-import time, math
+import math
+import time
 
 def get_fme_block(top_left, params_i, current_frame, y_counter, x_counter):
     mv_y: float = top_left[0]

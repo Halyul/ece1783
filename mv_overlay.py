@@ -1,6 +1,6 @@
 from lib.config.config import Config
 from lib.enums import Intraframe, VBSMarker
-from lib.components.frame import Frame, extend_block, pixel_create
+from lib.components.frame import Frame, extend_block
 from lib.components.qtc import QTCFrame, quantization_matrix
 from lib.components.mv import MotionVectorFrame
 import numpy as np
@@ -125,8 +125,6 @@ def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=Fal
         for i in range(len(mv_dump.raw)):
             predicted_frame_dump.append([])
             for j in range(len(mv_dump.raw[i])):
-                if j == 21 and i == 1:
-                    print('')
                 current_frame = frame.prev
                 if vbs_enable:
                     item = mv_dump.raw[i][j]
@@ -143,16 +141,13 @@ def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=Fal
                             for _ in range(block[top_left_index].ref_offset):
                                 local_current_frame = local_current_frame.prev
                             if fme_enable:
-                                d = get_fme_block(top_left, subblock_params_i, local_current_frame, top_left_coor[0], top_left_coor[1])
-                                if d.shape != (subblock_params_i, subblock_params_i):
-                                    raise Exception('Invalid FME block shape.')
-                                frame_data.append(d)
+                                frame_data.append(get_fme_block(top_left, subblock_params_i, local_current_frame, top_left_coor[0], top_left_coor[1]))
                                 coor = (top_left_coor[0] + top_left[0], top_left_coor[1] + top_left[1])
                                 label_dump.append(dict(
                                     y = coor[0] + subblock_params_i // 2,
                                     x = coor[1] + subblock_params_i // 2,
-                                    dy = top_left[0],
-                                    dx = top_left[1],
+                                    dy = top_left_coor[0] - coor[0],
+                                    dx = top_left_coor[1] - coor[1],
                                 ))
                             else:
                                 frame_data.append(local_current_frame.raw[top_left_coor[0] + top_left[0]:top_left_coor[0] + top_left[0] + subblock_params_i, top_left_coor[1] + top_left[1]:top_left_coor[1] + top_left[1] + subblock_params_i])
@@ -160,8 +155,8 @@ def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=Fal
                                 label_dump.append(dict(
                                     y = coor[0] + subblock_params_i // 2,
                                     x = coor[1] + subblock_params_i // 2,
-                                    dy = top_left[0],
-                                    dx = top_left[1],
+                                    dy = top_left_coor[0] - coor[0],
+                                    dx = top_left_coor[1] - coor[1],
                                 ))
                         frame_stack = np.concatenate((np.concatenate((frame_data[0], frame_data[1]), axis=1), np.concatenate((frame_data[2], frame_data[3]), axis=1)), axis=0)
                         predicted_frame_dump[i].append(frame_stack)
@@ -171,23 +166,20 @@ def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=Fal
                             current_frame = current_frame.prev
                         coor = (y_counter + top_left[0], x_counter + top_left[1])
                         if fme_enable:
-                            d = get_fme_block(top_left, params_i, current_frame, y_counter, x_counter)
-                            if d.shape != (params_i, params_i):
-                                raise Exception('Invalid FME block shape. y={}, x={}'.format(y_counter, x_counter))
                             predicted_frame_dump[i].append(get_fme_block(top_left, params_i, current_frame, y_counter, x_counter))
                             label_dump.append(dict(
                                 y = coor[0] + params_i // 2,
                                 x = coor[1] + params_i // 2,
-                                dy = top_left[0],
-                                dx = top_left[1],
+                                dy = y_counter - coor[0],
+                                dx = x_counter - coor[1],
                             ))
                         else:
                             predicted_frame_dump[i].append(current_frame.raw[y_counter + top_left[0]:y_counter + top_left[0] + params_i, x_counter + top_left[1]:x_counter + top_left[1] + params_i])
                             label_dump.append(dict(
                                 y = coor[0] + params_i // 2,
                                 x = coor[1] + params_i // 2,
-                                dy = top_left[0],
-                                dx = top_left[1],
+                                dy = y_counter - coor[0],
+                                dx = x_counter - coor[1],
                             ))
                 else:
                     top_left = mv_dump.raw[i][j].raw
@@ -199,16 +191,16 @@ def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=Fal
                         label_dump.append(dict(
                                 y = coor[0] + params_i // 2,
                                 x = coor[1] + params_i // 2,
-                                dy = top_left[0],
-                                dx = top_left[1],
+                                dy = y_counter - coor[0],
+                                dx = x_counter - coor[1],
                             ))
                     else:
                         predicted_frame_dump[i].append(current_frame.raw[y_counter + top_left[0]:y_counter + top_left[0] + params_i, x_counter + top_left[1]:x_counter + top_left[1] + params_i])
                         label_dump.append(dict(
                                 y = coor[0] + params_i // 2,
                                 x = coor[1] + params_i // 2,
-                                dy = top_left[0],
-                                dx = top_left[1],
+                                dy = y_counter - coor[0],
+                                dx = x_counter - coor[1],
                             ))
                 x_counter += params_i
             y_counter += params_i
@@ -255,7 +247,7 @@ if __name__ == '__main__':
         qtc_frame.read_from_file(qtc_file, q_matrix, width, params_qp)
         residual_frame = qtc_frame.to_residual_frame()
 
-        if read_frame_counter == 3:
+        if read_frame_counter == 9:
             print('')
 
         frame, labels = construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=VBSEnabled, fme_enable=FMEEnabled)

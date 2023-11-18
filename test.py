@@ -46,3 +46,17 @@ a[:, :, 0] = [
 ]
 """
 b = a[:, :, 0]
+import matplotlib.pyplot as plt
+
+#define two arrays for plotting
+A = [3, 5, 5, 6, 7, 8]
+B = [12, 14, 17, 20, 22, 27]
+
+#create scatterplot, specifying marker size to be 40
+plt.scatter(A, B, s=40)
+plt.gca().invert_yaxis()
+#add arrow to plot
+plt.arrow(x=4, y=18, dx=2, dy=-5, width=.08) 
+  
+#display plot 
+plt.show()

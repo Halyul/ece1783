@@ -146,8 +146,6 @@ def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=Fal
             predicted_frame_dump.append([])
             label_dump.append([])
             for j in range(len(mv_dump.raw[i])):
-                if j == 21 and i == 1:
-                    print('')
                 current_frame = frame.prev
                 if vbs_enable:
                     item = mv_dump.raw[i][j]
@@ -167,10 +165,7 @@ def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=Fal
                                 local_current_frame = local_current_frame.prev
                                 label_init += 1
                             if fme_enable:
-                                d = get_fme_block(top_left, subblock_params_i, local_current_frame, top_left_coor[0], top_left_coor[1])
-                                if d.shape != (subblock_params_i, subblock_params_i):
-                                    raise Exception('Invalid FME block shape.')
-                                frame_data.append(d)
+                                frame_data.append(get_fme_block(top_left, subblock_params_i, local_current_frame, top_left_coor[0], top_left_coor[1]))
                                 label_data.append(label_init)
                             else:
                                 frame_data.append(local_current_frame.raw[top_left_coor[0] + top_left[0]:top_left_coor[0] + top_left[0] + subblock_params_i, top_left_coor[1] + top_left[1]:top_left_coor[1] + top_left[1] + subblock_params_i])
@@ -186,9 +181,6 @@ def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=Fal
                             current_frame = current_frame.prev
                             label_init += 1
                         if fme_enable:
-                            d = get_fme_block(top_left, params_i, current_frame, y_counter, x_counter)
-                            if d.shape != (params_i, params_i):
-                                raise Exception('Invalid FME block shape. y={}, x={}'.format(y_counter, x_counter))
                             predicted_frame_dump[i].append(get_fme_block(top_left, params_i, current_frame, y_counter, x_counter))
                             label_dump[i].append(np.full(get_fme_block(top_left, params_i, current_frame, y_counter, x_counter).shape, label_init))
                         else:
@@ -198,7 +190,6 @@ def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=Fal
                     top_left = mv_dump.raw[i][j].raw
                     for _ in range(mv_dump.raw[i][j].ref_offset):
                         current_frame = current_frame.prev
-                    coor = (y_counter + top_left[0], x_counter + top_left[1])
                     if fme_enable:
                         predicted_frame_dump[i].append(get_fme_block(top_left, params_i, current_frame, y_counter, x_counter))
                         label_dump[i].append(np.full(get_fme_block(top_left, params_i, current_frame, y_counter, x_counter).shape, label_init))
@@ -208,7 +199,6 @@ def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=Fal
                 x_counter += params_i
             y_counter += params_i
             x_counter = 0
-
         frame.block_to_pixel(np.array(predicted_frame_dump))
         frame += residual_frame
         reconstructed_block_dump = frame
@@ -250,9 +240,6 @@ if __name__ == '__main__':
         qtc_frame = QTCFrame(params_i=params_i, vbs_enable=VBSEnabled)
         qtc_frame.read_from_file(qtc_file, q_matrix, width, params_qp)
         residual_frame = qtc_frame.to_residual_frame()
-
-        if read_frame_counter == 3:
-            print('')
 
         frame, labels = construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=VBSEnabled, fme_enable=FMEEnabled)
         frame.convert_within_range()
