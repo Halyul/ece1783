@@ -439,7 +439,7 @@ def intraframe_prediction(frame: Frame, q_matrix: np.ndarray, params: Params) ->
         reconstructed_block_dump (np.ndarray): The reconstructed blocks.
 """
 def mv_parallel_helper(index: int, frame: Frame, params: Params, q_matrix: np.ndarray, y: int) -> tuple:
-    if y == 128:
+    if y == 16 and frame.index == 2:
         print('')
     qtc_block_dump = []
     mv_dump = []
@@ -447,7 +447,7 @@ def mv_parallel_helper(index: int, frame: Frame, params: Params, q_matrix: np.nd
     prev_motion_vector = None
     split_counter = 0
     for x in range(0, frame.width, frame.params_i):
-        if x == 144:
+        if x == 336:
             print('')
         centered_top_left = (y, x)
         centered_block = frame.raw[centered_top_left[0]:centered_top_left[0] + frame.params_i, centered_top_left[1]:centered_top_left[1] + frame.params_i]

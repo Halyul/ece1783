@@ -126,7 +126,7 @@ class MotionVectorFrame:
                         for predictor in block:
                             diff_mv = predictor - prev_mv
                             prev_mv = predictor
-                            text += '{}'.format(diff_mv.to_str(self.is_intraframe))
+                            text += '{}'.format(diff_mv.to_str(self.is_intraframe, fme_enabled=self.fme_enable))
 
                     elif vbs is VBSMarker.UNSPLIT:
                         diff_mv = block - prev_mv
