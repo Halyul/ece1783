@@ -247,9 +247,6 @@ if __name__ == '__main__':
         qtc_frame.read_from_file(qtc_file, q_matrix, width, params_qp)
         residual_frame = qtc_frame.to_residual_frame()
 
-        if read_frame_counter == 9:
-            print('')
-
         frame, labels = construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=VBSEnabled, fme_enable=FMEEnabled)
         frame.convert_within_range()
         if not mv_dump.is_intraframe:
