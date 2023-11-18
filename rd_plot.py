@@ -44,14 +44,14 @@ if __name__ == '__main__':
             FMEEnable=False,
             FastME=False,
         ),
-        # dict(
-        #     i=params_i,
-        #     r=params_r,
-        #     nRefFrames=1,
-        #     VBSEnable=False,
-        #     FMEEnable=True,
-        #     FastME=False,
-        # ),
+        dict(
+            i=params_i,
+            r=params_r,
+            nRefFrames=1,
+            VBSEnable=False,
+            FMEEnable=True,
+            FastME=False,
+        ),
         dict(
             i=params_i,
             r=params_r,
@@ -60,14 +60,14 @@ if __name__ == '__main__':
             FMEEnable=False,
             FastME=True,
         ),
-        # dict(
-        #     i=params_i,
-        #     r=params_r,
-        #     nRefFrames=4,
-        #     VBSEnable=True,
-        #     FMEEnable=True,
-        #     FastME=True,
-        # )
+        dict(
+            i=params_i,
+            r=params_r,
+            nRefFrames=4,
+            VBSEnable=True,
+            FMEEnable=True,
+            FastME=True,
+        )
     ]
     results = []
 
