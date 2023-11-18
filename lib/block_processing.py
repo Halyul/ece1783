@@ -1,3 +1,4 @@
+import math
 import numpy as np
 from multiprocessing import Pool
 from pathlib import Path
@@ -131,6 +132,134 @@ def intraframe_vbs(current_coor:tuple, original_block: np.ndarray, reconstructed
     else:
         return qtc_block, reconstructed_block, None
 
+def get_interpolated_block(current_block, current_coor, location, frame, params_i):
+    # location = [0, 1, 2, 3] #top, bottom, left, right
+    current_block = current_block.astype(float)
+    top_left = current_coor
+    max_size = frame.shape
+    search_window = None
+    is_y_interpolate = not float(current_coor[0]).is_integer()
+    is_x_interpolate = not float(current_coor[1]).is_integer()
+    if is_y_interpolate or is_x_interpolate:
+        if is_y_interpolate and not is_x_interpolate:
+            # y is interpolated, top and bottom blocks exist
+            # x is not interpolated, left and right blocks may exist
+            top_block_top_left = (math.floor(top_left[0]), int(top_left[1]))
+            bottom_block_top_left = (math.ceil(top_left[0]), int(top_left[1]))
+            top_block = frame.raw[top_block_top_left[0]:top_block_top_left[0] + params_i, top_block_top_left[1]:top_block_top_left[1] + params_i].astype(float)
+            bottom_block = frame.raw[bottom_block_top_left[0]:bottom_block_top_left[0] + params_i, bottom_block_top_left[1]:bottom_block_top_left[1] + params_i].astype(float)
+            if location == 0:
+                search_window = top_block
+                top_left = top_block_top_left
+            elif location == 1:
+                search_window = bottom_block
+                top_left = bottom_block_top_left
+            elif location == 2:
+                top_left_block_top_left = (top_block_top_left[0], top_block_top_left[1] - 1)
+                if top_left_block_top_left[1] >= 0:
+                    bottom_left_block_top_left = (bottom_block_top_left[0], bottom_block_top_left[1] - 1)
+                    top_left_block = frame.raw[top_left_block_top_left[0]:top_left_block_top_left[0] + params_i, top_left_block_top_left[1]:top_left_block_top_left[1] + params_i].astype(float)
+                    bottom_left_block = frame.raw[bottom_left_block_top_left[0]:bottom_left_block_top_left[0] + params_i, bottom_left_block_top_left[1]:bottom_left_block_top_left[1] + params_i].astype(float)
+                    top_center_block = (top_left_block + top_block) / 2
+                    bottom_center_block = (bottom_left_block + bottom_block) / 2
+                    left_center_block = (top_left_block + bottom_left_block) / 2
+                    search_window = (top_center_block + bottom_center_block + left_center_block + current_block) / 4
+                    top_left = (top_left[0] - 0.5, top_left[1])
+            elif location == 3:
+                top_right_block_top_left = (top_block_top_left[0], top_block_top_left[1] + 1)
+                if top_right_block_top_left[1] + params_i <= max_size[1]:
+                    bottom_right_block_top_left = (bottom_block_top_left[0], bottom_block_top_left[1] + 1)
+                    top_right_block = frame.raw[top_right_block_top_left[0]:top_right_block_top_left[0] + params_i, top_right_block_top_left[1]:top_right_block_top_left[1] + params_i].astype(float)
+                    bottom_right_block = frame.raw[bottom_right_block_top_left[0]:bottom_right_block_top_left[0] + params_i, bottom_right_block_top_left[1]:bottom_right_block_top_left[1] + params_i].astype(float)
+                    top_center_block = (top_right_block + top_block) / 2
+                    bottom_center_block = (bottom_right_block + bottom_block) / 2
+                    right_center_block = (top_right_block + bottom_right_block) / 2
+                    search_window = (top_center_block + bottom_center_block + right_center_block + current_block) / 4
+                    top_left = (top_left[0] + 0.5, top_left[1])
+        elif is_x_interpolate and not is_y_interpolate:
+            # x is interpolated, left and right blocks exist
+            # y is not interpolated, top and bottom blocks may exist
+            left_block_top_left = (int(top_left[0]), math.floor(top_left[1]))
+            right_block_top_left = (int(top_left[0]), math.ceil(top_left[1]))
+            left_block = frame.raw[left_block_top_left[0]:left_block_top_left[0] + params_i, left_block_top_left[1]:left_block_top_left[1] + params_i].astype(float)
+            right_block = frame.raw[right_block_top_left[0]:right_block_top_left[0] + params_i, right_block_top_left[1]:right_block_top_left[1] + params_i].astype(float)
+            if location == 0:
+                top_left_block_top_left = (left_block_top_left[0] - 1, left_block_top_left[1])
+                if top_left_block_top_left[0] >= 0:
+                    top_right_block_top_left = (right_block_top_left[0] - 1, right_block_top_left[1])
+                    top_left_block = frame.raw[top_left_block_top_left[0]:top_left_block_top_left[0] + params_i, top_left_block_top_left[1]:top_left_block_top_left[1] + params_i].astype(float)
+                    top_right_block = frame.raw[top_right_block_top_left[0]:top_right_block_top_left[0] + params_i, top_right_block_top_left[1]:top_right_block_top_left[1] + params_i].astype(float)
+                    top_center_block = (top_left_block + top_right_block) / 2
+                    left_center_block = (top_left_block + left_block) / 2
+                    right_center_block = (top_right_block + right_block) / 2
+                    search_window = (top_center_block + left_center_block + right_center_block + current_block) / 4
+                    top_left = (top_left[0], top_left[1] - 0.5)
+            elif location == 1:
+                bottom_left_block_top_left = (left_block_top_left[0] + 1, left_block_top_left[1])
+                if bottom_left_block_top_left[0] + params_i <= max_size[0]:
+                    bottom_right_block_top_left = (right_block_top_left[0] + 1, right_block_top_left[1])
+                    bottom_left_block = frame.raw[bottom_left_block_top_left[0]:bottom_left_block_top_left[0] + params_i, bottom_left_block_top_left[1]:bottom_left_block_top_left[1] + params_i].astype(float)
+                    bottom_right_block = frame.raw[bottom_right_block_top_left[0]:bottom_right_block_top_left[0] + params_i, bottom_right_block_top_left[1]:bottom_right_block_top_left[1] + params_i].astype(float)
+                    bottom_center_block = (bottom_left_block + bottom_right_block) / 2
+                    left_center_block = (bottom_left_block + left_block) / 2
+                    right_center_block = (bottom_right_block + right_block) / 2
+                    search_window = (bottom_center_block + left_center_block + right_center_block + current_block) / 4
+                    top_left = (top_left[0], top_left[1] + 0.5)
+            elif location == 2:
+                search_window = left_block
+                top_left = left_block_top_left
+            elif location == 3:
+                search_window = right_block
+                top_left = right_block_top_left
+        else:
+            # both x and y are interpolated, which means top left, top right, bottom left, bottom right blocks exist
+            top_left_block_top_left = (math.floor(top_left[0]), math.floor(top_left[1]))
+            top_right_block_top_left = (math.floor(top_left[0]), math.ceil(top_left[1]))
+            bottom_left_block_top_left = (math.ceil(top_left[0]), math.floor(top_left[1]))
+            bottom_right_block_top_left = (math.ceil(top_left[0]), math.ceil(top_left[1]))
+            top_left_block = frame.raw[top_left_block_top_left[0]:top_left_block_top_left[0] + params_i, top_left_block_top_left[1]:top_left_block_top_left[1] + params_i].astype(float)
+            top_right_block = frame.raw[top_right_block_top_left[0]:top_right_block_top_left[0] + params_i, top_right_block_top_left[1]:top_right_block_top_left[1] + params_i].astype(float)
+            bottom_left_block = frame.raw[bottom_left_block_top_left[0]:bottom_left_block_top_left[0] + params_i, bottom_left_block_top_left[1]:bottom_left_block_top_left[1] + params_i].astype(float)
+            bottom_right_block = frame.raw[bottom_right_block_top_left[0]:bottom_right_block_top_left[0] + params_i, bottom_right_block_top_left[1]:bottom_right_block_top_left[1] + params_i].astype(float)
+            if location == 0:
+                search_window = (top_left_block + top_right_block) / 2
+                top_left = (top_left[0] - 0.5, top_left[1])
+            elif location == 1:
+                search_window = (bottom_left_block + bottom_right_block) / 2
+                top_left = (top_left[0] + 0.5, top_left[1])
+            elif location == 2:
+                search_window = (top_left_block + bottom_left_block) / 2
+                top_left = (top_left[0], top_left[1] - 0.5)
+            elif location == 3:
+                search_window = (top_right_block + bottom_right_block) / 2
+                top_left = (top_left[0], top_left[1] + 0.5)
+    else:
+        if location == 0:
+            top_block_top_left = (int(top_left[0]) - 1, int(top_left[1]))
+            if top_block_top_left[0] >= 0:
+                top_block = frame.raw[top_block_top_left[0]:top_block_top_left[0] + params_i, top_block_top_left[1]:top_block_top_left[1] + params_i].astype(float)
+                search_window = (top_block + current_block) / 2
+                top_left = (top_left[0] - 0.5, top_left[1])
+        elif location == 1:
+            bottom_block_top_left = (int(top_left[0]) + 1, int(top_left[1]))
+            if bottom_block_top_left[0] + params_i <= max_size[0]:
+                bottom_block = frame.raw[bottom_block_top_left[0]:bottom_block_top_left[0] + params_i, bottom_block_top_left[1]:bottom_block_top_left[1] + params_i].astype(float)
+                search_window = (bottom_block + current_block) / 2
+                top_left = (top_left[0] + 0.5, top_left[1])
+        elif location == 2:
+            left_block_top_left = (int(top_left[0]), int(top_left[1]) - 1)
+            if left_block_top_left[1] >= 0:
+                left_block = frame.raw[left_block_top_left[0]:left_block_top_left[0] + params_i, left_block_top_left[1]:left_block_top_left[1] + params_i].astype(float)
+                search_window = (left_block + current_block) / 2
+                top_left = (top_left[0], top_left[1] - 0.5)
+        elif location == 3:
+            right_block_top_left = (int(top_left[0]), int(top_left[1]) + 1)
+            if right_block_top_left[1] + params_i <= max_size[1]:
+                right_block = frame.raw[right_block_top_left[0]:right_block_top_left[0] + params_i, right_block_top_left[1]:right_block_top_left[1] + params_i].astype(float)
+                search_window = (right_block + current_block) / 2
+                top_left = (top_left[0], top_left[1] + 0.5)
+    return top_left, search_window
+
 def calc_fast_motion_vector(block: np.ndarray, block_coor: tuple, frame: Frame, params_i, params, mvp) -> tuple:
     """
         Nearest Neighbors search is a requirement, with MVP being the MV of the latest encoded block (MVP =(0,0) for first block in every row of (𝑖 × 𝑖) blocks). Note: any candidate block that partially or fully exists outside of the frame is not searched. Lecture 6
@@ -160,7 +289,7 @@ def calc_fast_motion_vector(block: np.ndarray, block_coor: tuple, frame: Frame, 
         search_windows.append(search_window)
         current_frame = current_frame.prev
     
-    baseline_motion_vector, baseline_block = calc_full_range_motion_vector(block, block_coor, search_windows, top_left, params_i, params.FMEEnable)
+    baseline_motion_vector, baseline_block = calc_full_range_motion_vector(block, block_coor, search_windows, top_left, params_i, False)
     min_motion_vector = baseline_motion_vector
     min_yx = block_coor
     min_block = baseline_block
@@ -173,24 +302,40 @@ def calc_fast_motion_vector(block: np.ndarray, block_coor: tuple, frame: Frame, 
 
         # generate 5 coor
         coors = [
-            (new_coor[0], new_coor[1]),
-            (new_coor[0] - 1, new_coor[1]),
-            (new_coor[0] + 1, new_coor[1]),
-            (new_coor[0], new_coor[1] - 1),
-            (new_coor[0], new_coor[1] + 1),
+            (-1, 0), # top
+            (1, 0), # bottom
+            (0, - 1), # left
+            (0, 1), # right
         ]
-        for current_coor in coors:
-            if current_coor[0] < 0 or current_coor[1] < 0 or current_coor[0] + params_i > frame.shape[0] or current_coor[1] + params_i > frame.shape[1] or (current_coor[0] == block_coor[0] and current_coor[1] == block_coor[1]):
+        for coor_index in range(len(coors)):
+            current_coor = (new_coor[0] + coors[coor_index][0], new_coor[1] + coors[coor_index][1])
+            if current_coor[0] < 0 or current_coor[1] < 0 or current_coor[0] + params_i > frame.shape[0] or current_coor[1] + params_i > frame.shape[1]:
                 continue
             top_left, bottom_right = extend_block(current_coor, params_i, (0, 0, 0, 0), frame.shape)
             search_windows = []
             current_frame = frame
-            while current_frame.prev is not None:
-                search_window = current_frame.prev.raw[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
+            selection_flag = True
+            while current_frame.prev is not None and selection_flag:
+                if params.FMEEnable:
+                    # center block's top left in interpolated frame
+                    scaled_center_top_left = (new_coor[0] * 2, new_coor[1] * 2)
+                    # search block's top left in interpolated frame
+                    scaled_top_left = (float(scaled_center_top_left[0] + coors[coor_index][0]), float(scaled_center_top_left[1] + coors[coor_index][1]))
+                    # actual top left in the true frame
+                    top_left = (scaled_top_left[0] / 2, scaled_top_left[1] / 2)
+                    # TODO: check if this is correct
+                    top_left, search_window = get_interpolated_block(baseline_block, top_left, coor_index, current_frame.prev, params_i)
+                    if search_window is None:
+                        selection_flag = False
+                else:
+                    search_window = current_frame.prev.raw[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
                 search_windows.append(search_window)
                 current_frame = current_frame.prev
+            
+            if not selection_flag:
+                continue
 
-            current_min_motion_vector, current_min_block = calc_full_range_motion_vector(block, block_coor, search_windows, top_left, params_i, params.FMEEnable)
+            current_min_motion_vector, current_min_block = calc_full_range_motion_vector(block, block_coor, search_windows, top_left, params_i, False)
 
             if current_min_motion_vector.mae < min_motion_vector.mae:
                 min_motion_vector = current_min_motion_vector
@@ -219,6 +364,7 @@ def calc_fast_motion_vector(block: np.ndarray, block_coor: tuple, frame: Frame, 
             break
         else:
             baseline_motion_vector = min_motion_vector
+            baseline_block = min_block
             search_origin = min_yx
             mvp = min_motion_vector
     return min_motion_vector, min_block
@@ -440,16 +586,12 @@ def intraframe_prediction(frame: Frame, q_matrix: np.ndarray, params: Params) ->
         reconstructed_block_dump (np.ndarray): The reconstructed blocks.
 """
 def mv_parallel_helper(index: int, frame: Frame, params: Params, q_matrix: np.ndarray, y: int) -> tuple:
-    if y == 16 and frame.index == 1:
-        print('')
     qtc_block_dump = []
     mv_dump = []
     reconstructed_block_dump = []
     prev_motion_vector = None
     split_counter = 0
     for x in range(0, frame.width, frame.params_i):
-        if x == 336:
-            print('')
         centered_top_left = (y, x)
         centered_block = frame.raw[centered_top_left[0]:centered_top_left[0] + frame.params_i, centered_top_left[1]:centered_top_left[1] + frame.params_i]
 

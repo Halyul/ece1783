@@ -136,8 +136,6 @@ def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=Fal
         for i in range(len(mv_dump.raw)):
             predicted_frame_dump.append([])
             for j in range(len(mv_dump.raw[i])):
-                if j == 21 and i == 1:
-                    print('')
                 current_frame = frame.prev
                 if vbs_enable:
                     item = mv_dump.raw[i][j]
@@ -154,10 +152,7 @@ def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=Fal
                             for _ in range(block[top_left_index].ref_offset):
                                 local_current_frame = local_current_frame.prev
                             if fme_enable:
-                                d = get_fme_block(top_left, subblock_params_i, local_current_frame, top_left_coor[0], top_left_coor[1])
-                                if d.shape != (subblock_params_i, subblock_params_i):
-                                    raise Exception('Invalid FME block shape.')
-                                frame_data.append(d)
+                                frame_data.append(get_fme_block(top_left, subblock_params_i, local_current_frame, top_left_coor[0], top_left_coor[1]))
                             else:
                                 frame_data.append(local_current_frame.raw[top_left_coor[0] + top_left[0]:top_left_coor[0] + top_left[0] + subblock_params_i, top_left_coor[1] + top_left[1]:top_left_coor[1] + top_left[1] + subblock_params_i])
                         frame_stack = np.concatenate((np.concatenate((frame_data[0], frame_data[1]), axis=1), np.concatenate((frame_data[2], frame_data[3]), axis=1)), axis=0)
@@ -167,9 +162,6 @@ def construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=Fal
                         for _ in range(block.ref_offset):
                             current_frame = current_frame.prev
                         if fme_enable:
-                            d = get_fme_block(top_left, params_i, current_frame, y_counter, x_counter)
-                            if d.shape != (params_i, params_i):
-                                raise Exception('Invalid FME block shape. y={}, x={}'.format(y_counter, x_counter))
                             predicted_frame_dump[i].append(get_fme_block(top_left, params_i, current_frame, y_counter, x_counter))
                         else:
                             predicted_frame_dump[i].append(current_frame.raw[y_counter + top_left[0]:y_counter + top_left[0] + params_i, x_counter + top_left[1]:x_counter + top_left[1] + params_i])
@@ -225,9 +217,6 @@ if __name__ == '__main__':
         qtc_frame = QTCFrame(params_i=params_i, vbs_enable=VBSEnabled)
         qtc_frame.read_from_file(qtc_file, q_matrix, width, params_qp)
         residual_frame = qtc_frame.to_residual_frame()
-
-        if read_frame_counter == 3:
-            print('')
 
         frame = construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=VBSEnabled, fme_enable=FMEEnabled)
         frame.convert_within_range()
