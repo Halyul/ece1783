@@ -17,3 +17,13 @@ class ConfigObject(ABC):
     @abstractmethod
     def validate(self):
         pass
+
+    def add(self, key, value):
+        """
+            Add a new key-value pair to the config.
+        """
+        if key not in self.config:
+            self.config[key] = value
+            setattr(self, key, value)
+        else:
+            raise Exception('Key already exists.')

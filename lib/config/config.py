@@ -16,6 +16,9 @@ class Config:
         self.statistics = Statistics(self.config['statistics'])
         self.decoder = Decoder(self.config['decoder'])
 
+        if self.params.RCflag != 0:
+            self.params.add('perframeBR', self.params.targetBR / self.video_params.fps)
+
         self.output_path.main_folder = pathlib.Path.cwd().joinpath(self.output_path.main_folder)
         if clean_up:
             self.__clean_up()
@@ -108,6 +111,18 @@ class Params(ConfigObject):
                         print('VBS cannot be enabled when the block size is not power of 2.')
                     n = n // 2
             self.VBSEnable = True
+        if 'RCflag' in self.config:
+            if self.RCflag != 0:
+                if 'targetBR' in self.config:
+                    bitrate, unit = self.targetBR.split(' ')
+                    if unit == 'bps':
+                        self.targetBR = int(bitrate)
+                    elif unit == 'kbps':
+                        self.targetBR = int(bitrate) * 1024
+                    elif unit == 'mbps':
+                        self.targetBR = int(bitrate) * 1024 * 1024
+                    else:
+                        raise Exception('Invalid target bitrate unit.')
         return
     
 class Decoder(ConfigObject):

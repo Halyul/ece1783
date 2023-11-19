@@ -3,6 +3,7 @@ input: videos/foreman_cif.yuv
 video_params:
   height: 288
   width: 352
+  fps: 30
   color_space: 420
 upscale: 444
 output_path:
@@ -17,7 +18,7 @@ output_path:
   split_counter_file: split_counter.txt
 params:
   i: 16
-  r: 4 # 1, 4, 8
+  r: 16
   stop_at: 10 # stop after processing how many frames, -1 to disable
   qp: 2
   i_period: 8
@@ -25,6 +26,9 @@ params:
   VBSEnable: true # true, false
   FMEEnable: true # true, false
   FastME: true # true, false
+  RCflag: 1 # 0 -> OFF, 1 -> ON, 2, 3
+  targetBR: 1 mbps # <x> bps, <x> kbps, <x> mbps
+  ParallelMode: 1 # 1, 2, 3
 
 statistics:
   path: statistics
