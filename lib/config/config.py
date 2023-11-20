@@ -123,6 +123,9 @@ class Params(ConfigObject):
                         self.targetBR = int(bitrate) * 1024 * 1024
                     else:
                         raise Exception('Invalid target bitrate unit.')
+        if 'ParallelMode' in self.config:
+            if self.ParallelMode == 1:
+                self.i_period = -1
         return
     
 class Decoder(ConfigObject):

@@ -204,7 +204,7 @@ if __name__ == '__main__':
     FMEEnabled = bool(int(l[7]))
     q_matrix = quantization_matrix(params_i, params_qp)
     read_frame_counter = 0
-    prev_frame = None
+    prev_frame = Frame(-1, height, width, params_i=config.params.i, data=np.full(height*width, 128).reshape(height, width))
     while read_frame_counter < total_frames:
         mv_file = mv_path.joinpath('{}'.format(read_frame_counter))
         mv_dump = MotionVectorFrame(vbs_enable=VBSEnabled, fme_enable=FMEEnabled)

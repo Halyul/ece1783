@@ -150,7 +150,6 @@ class MotionVectorFrame:
                     prev_mv = self.raw[i][j]
                     text += diff_mv.to_str(self.is_intraframe, fme_enabled=self.fme_enable)
         return binstr_to_bytes(text)
-        # return text
 
     def read_from_file(self, path: pathlib.Path, width: int, params_i: int):
         """

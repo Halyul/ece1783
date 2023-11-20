@@ -620,80 +620,89 @@ def intraframe_prediction(index, coor_dict, block_dict, q_matrix: np.ndarray, pa
 
     return coor_dict['current'], qtc_block, current_predictor, reconstructed_block, split_counter
 
-"""
-    Helper function to calculate the motion vector, residual blocks, and mae values.
+def interframe_block_prediction(current_coor, frame, params, q_matrix, prev_motion_vector=None):
+    split_counter = 0
+    centered_block = frame.raw[current_coor[0]:current_coor[0] + frame.params_i, current_coor[1]:current_coor[1] + frame.params_i]
 
-    Parameters:
-        index (int): The index of the frame.
-        frame (Frame): The current frame.
-        params_r (int): The search window size.
-        q_matrix (np.ndarray): The quantization matrix.
-        y (int): The y coordinate of the block.
+    top_left = None
+    search_windows = None
 
-    Returns:
-        index (int): The index of the frame.
-        qtc_block_dump (np.ndarray): The quantized transformed coefficients.
-        mv_dump (list): The motion vectors.
-        mae_dump (list): The mean absolute errors.
-        reconstructed_block_dump (np.ndarray): The reconstructed blocks.
-"""
+    if params.FastME:
+        min_motion_vector, min_block = calc_fast_motion_vector(centered_block, current_coor, frame, frame.params_i, params, prev_motion_vector)
+    else:
+        top_left, bottom_right = extend_block(current_coor, frame.params_i, (params.r, params.r, params.r, params.r), frame.shape)
+    
+        current_frame = frame
+        search_windows = []
+        while current_frame.prev is not None:
+            search_window = current_frame.prev.raw[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
+            search_windows.append(search_window)
+            current_frame = current_frame.prev
+        min_motion_vector, min_block = calc_full_range_motion_vector(centered_block, current_coor, search_windows, top_left, frame.params_i, params.FMEEnable)
+
+    qtc_block = QTCBlock(block=centered_block - min_block, q_matrix=q_matrix)
+    qtc_block.block_to_qtc()
+    reconstructed_block = qtc_block.block + min_block
+    diff_mv = min_motion_vector - prev_motion_vector if prev_motion_vector is not None else min_motion_vector
+    prev_motion_vector = min_motion_vector
+
+    if params.VBSEnable:
+        coor_offset = (current_coor[0] - top_left[0], current_coor[1] - top_left[1]) if top_left is not None else None
+        vbs_qtc_block, vbs_reconstructed_block, vbs_mv = interframe_vbs(coor_offset, centered_block, search_windows, reconstructed_block, qtc_block, diff_mv, prev_motion_vector, frame, params)
+        reconstructed_block = vbs_reconstructed_block
+        if vbs_mv is not None:
+            qtc_block = dict(
+                vbs=VBSMarker.SPLIT,
+                qtc_block=vbs_qtc_block,
+            )
+            min_motion_vector = dict(
+                vbs=VBSMarker.SPLIT,
+                predictor=vbs_mv,
+            )
+            prev_motion_vector = vbs_mv[-1]
+            print('vbs used in Frame', frame.index, current_coor)
+            split_counter += 1
+        else:
+            qtc_block = dict(
+                vbs=VBSMarker.UNSPLIT,
+                qtc_block=qtc_block,
+            )
+            min_motion_vector = dict(
+                vbs=VBSMarker.UNSPLIT,
+                predictor=min_motion_vector,
+            )
+    return current_coor, qtc_block, min_motion_vector, reconstructed_block, split_counter
+
 def interframe_prediction(index: int, frame: Frame, params: Params, q_matrix: np.ndarray, y: int) -> tuple:
+    """
+        Helper function to calculate the motion vector, residual blocks, and mae values.
+
+        Parameters:
+            index (int): The index of the frame.
+            frame (Frame): The current frame.
+            params_r (int): The search window size.
+            q_matrix (np.ndarray): The quantization matrix.
+            y (int): The y coordinate of the block.
+
+        Returns:
+            index (int): The index of the frame.
+            qtc_block_dump (np.ndarray): The quantized transformed coefficients.
+            mv_dump (list): The motion vectors.
+            mae_dump (list): The mean absolute errors.
+            reconstructed_block_dump (np.ndarray): The reconstructed blocks.
+    """
     qtc_block_dump = []
     mv_dump = []
     reconstructed_block_dump = []
     prev_motion_vector = None
     split_counter = 0
     for x in range(0, frame.width, frame.params_i):
-        centered_top_left = (y, x)
-        centered_block = frame.raw[centered_top_left[0]:centered_top_left[0] + frame.params_i, centered_top_left[1]:centered_top_left[1] + frame.params_i]
-
-        top_left = None
-        search_windows = None
-
-        if params.FastME:
-            min_motion_vector, min_block = calc_fast_motion_vector(centered_block, centered_top_left, frame, frame.params_i, params, prev_motion_vector)
-        else:
-            top_left, bottom_right = extend_block(centered_top_left, frame.params_i, (params.r, params.r, params.r, params.r), frame.shape)
-        
-            current_frame = frame
-            search_windows = []
-            while current_frame.prev is not None:
-                search_window = current_frame.prev.raw[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
-                search_windows.append(search_window)
-                current_frame = current_frame.prev
-            min_motion_vector, min_block = calc_full_range_motion_vector(centered_block, centered_top_left, search_windows, top_left, frame.params_i, params.FMEEnable)
-
-        qtc_block = QTCBlock(block=centered_block - min_block, q_matrix=q_matrix)
-        qtc_block.block_to_qtc()
-        reconstructed_block = qtc_block.block + min_block
-        diff_mv = min_motion_vector - prev_motion_vector if prev_motion_vector is not None else min_motion_vector
-        prev_motion_vector = min_motion_vector
-
+        _, qtc_block, min_motion_vector, reconstructed_block, current_split_counter = interframe_block_prediction((y, x), frame, params, q_matrix, prev_motion_vector)
+        if current_split_counter > 0:
+            split_counter += current_split_counter
         if params.VBSEnable:
-            coor_offset = (centered_top_left[0] - top_left[0], centered_top_left[1] - top_left[1]) if top_left is not None else None
-            vbs_qtc_block, vbs_reconstructed_block, vbs_mv = interframe_vbs(coor_offset, centered_block, search_windows, reconstructed_block, qtc_block, diff_mv, prev_motion_vector, frame, params)
-            reconstructed_block = vbs_reconstructed_block
-            if vbs_mv is not None:
-                qtc_block = dict(
-                    vbs=VBSMarker.SPLIT,
-                    qtc_block=vbs_qtc_block,
-                )
-                min_motion_vector = dict(
-                    vbs=VBSMarker.SPLIT,
-                    predictor=vbs_mv,
-                )
-                prev_motion_vector = vbs_mv[-1]
-                print('vbs used in Frame', frame.index, centered_top_left)
-                split_counter += 1
-            else:
-                qtc_block = dict(
-                    vbs=VBSMarker.UNSPLIT,
-                    qtc_block=qtc_block,
-                )
-                min_motion_vector = dict(
-                    vbs=VBSMarker.UNSPLIT,
-                    predictor=min_motion_vector,
-                )
+            if min_motion_vector['vbs'] == VBSMarker.SPLIT:
+                prev_motion_vector = min_motion_vector['predictor'][-1]
 
         qtc_block_dump.append(qtc_block)
         reconstructed_block_dump.append(reconstructed_block)
@@ -778,7 +787,7 @@ def calc_motion_vector_parallel_helper(frame: Frame, params: Params, q_matrix: n
                 mv_dump.set(current_coor, result[2])
                 split_counter += result[4]
                 finished_blocks += 1  
-    else:
+    elif params.ParallelMode == 2:
         jobs = []
         results = []
         counter = 0
@@ -806,6 +815,32 @@ def calc_motion_vector_parallel_helper(frame: Frame, params: Params, q_matrix: n
             qtc_block_dump.append_list(index, result[1])
             mv_dump.append_list(index, result[2])
             reconstructed_block_dump[index] = result[3]
+            split_counter += result[4]
+    elif params.ParallelMode == 1:
+        jobs = []
+        results = []
+        split_counter = 0
+        row_block_no = frame.height // frame.params_i
+        col_block_no = frame.width // frame.params_i
+        reconstructed_block_dump = [[None] * col_block_no for _ in range(row_block_no)]
+        qtc_block_dump = QTCFrame(shape=(row_block_no, col_block_no), vbs_enable=params.VBSEnable)
+        mv_dump = MotionVectorFrame(shape=(row_block_no, col_block_no), vbs_enable=params.VBSEnable, fme_enable=params.FMEEnable)
+        for y in range(0, frame.height, frame.params_i):
+            for x in range(0, frame.width, frame.params_i):
+                job = pool.apply_async(func=interframe_block_prediction, args=(
+                    (y, x),
+                    frame,
+                    params,
+                    q_matrix,
+                ))
+                jobs.append(job)
+        
+        for job in jobs:
+            result = job.get()
+            current_coor = (result[0][0] // frame.params_i, result[0][1] // frame.params_i)
+            qtc_block_dump.set(current_coor, result[1])
+            mv_dump.set(current_coor, result[2])
+            reconstructed_block_dump[current_coor[0]][current_coor[1]] = result[3]
             split_counter += result[4]
         
     current_reconstructed_frame = Frame(frame=frame)

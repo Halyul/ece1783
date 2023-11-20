@@ -81,7 +81,7 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
         pool.join()
         return
     jobs = []
-    prev_frame = None
+    prev_frame = Frame(-1, height, width, params_i=config.params.i, data=np.full(height*width, 128).reshape(height, width))
     split_counters = []
     while run_flag:
         file = config.output_path.original_folder.joinpath(str(counter))
@@ -89,7 +89,11 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
             print("Waiting for original file {} to be written".format(counter))
             time.sleep(1)
             continue
-        frame = Frame(counter, height, width, params_i=config.params.i, is_intraframe=counter % config.params.i_period == 0)
+        if config.params.i_period != -1:
+            is_intraframe=counter % config.params.i_period == 0
+        else:
+            is_intraframe=False
+        frame = Frame(counter, height, width, params_i=config.params.i, is_intraframe=is_intraframe)
         frame.read_from_file(file)
         frame.convert_type(np.int16)
         reconstructed_path = config.output_path.reconstructed_folder
