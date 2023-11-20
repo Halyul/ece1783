@@ -215,8 +215,10 @@ class QTCBlock:
 
 class QTCFrame:
     
-    def __init__(self, params_i: int= 1, length=0, vbs_enable=False):
-        self.blocks = [None] * length
+    def __init__(self, params_i: int= 1, length=0, vbs_enable=False, shape=None):
+        self.blocks = [None] * length if length > 0 else []
+        if shape is not None:
+            self.blocks = [[None] * shape[1] for _ in range(shape[0])]
         self.shape = None
         self.params_i = params_i
         self.vbs_enable = vbs_enable
@@ -226,6 +228,12 @@ class QTCFrame:
             Add a new row.
         """
         self.blocks.append([])
+
+    def set(self, coor: tuple, block: QTCBlock):
+        """
+            Set a block at a coordinate.
+        """
+        self.blocks[coor[0]][coor[1]] = block
 
     def append(self, block: QTCBlock) -> None:
         """

@@ -37,11 +37,19 @@ class MotionVector:
     
 class MotionVectorFrame:
 
-    def __init__(self, is_intraframe=False, length=0, vbs_enable=False, fme_enable=False):
+    def __init__(self, is_intraframe=False, length=0, vbs_enable=False, fme_enable=False, shape=None):
         self.is_intraframe = is_intraframe
-        self.raw = [None] * length
+        self.raw = [None] * length if length > 0 else []
+        if shape is not None:
+            self.raw = [[None] * shape[1] for _ in range(shape[0])]
         self.vbs_enable = vbs_enable
         self.fme_enable = fme_enable
+
+    def set(self, coor: tuple, mv: MotionVector):
+        """
+            Set a mv at a coordinate.
+        """
+        self.raw[coor[0]][coor[1]] = mv
 
     def new_row(self):
         """

@@ -17,9 +17,6 @@ def rdo(original_block: np.ndarray, reconstructed_block: np.ndarray, qtc_block: 
     return sad_value + lambda_value * r_vaule
 
 def interframe_vbs(coor_offset: tuple, original_block: np.ndarray, original_search_windows: list, reconstructed_block: np.ndarray, qtc_block: QTCBlock, diff_mv: MotionVector, prev_motion_vector: MotionVector, frame: Frame, params: Params):
-    """
-        Implementation verification pending
-    """
     block_rdo_cost = rdo(original_block, reconstructed_block, qtc_block, diff_mv, params.qp, is_intraframe=False)
     subblock_params_i = params.i // 2
     q_matrix = quantization_matrix(subblock_params_i, params.qp - 1 if params.qp > 0 else 0)
@@ -64,10 +61,7 @@ def interframe_vbs(coor_offset: tuple, original_block: np.ndarray, original_sear
     else:
         return qtc_block, reconstructed_block, None
 
-def intraframe_vbs(current_coor:tuple, original_block: np.ndarray, reconstructed_block: np.ndarray, reconstructed_block_dump, qtc_block: QTCBlock, diff_predictor: int, params: Params):
-    """
-        Implementation verification pending
-    """
+def intraframe_vbs(original_block: np.ndarray, reconstructed_block: np.ndarray, block_dict, qtc_block: QTCBlock, diff_predictor: int, params: Params):
     block_rdo_cost = rdo(original_block, reconstructed_block, qtc_block, diff_predictor, params.qp, is_intraframe=True)
     subblock_params_i = params.i // 2
     q_matrix = quantization_matrix(subblock_params_i, params.qp - 1 if params.qp > 0 else 0)
@@ -81,30 +75,42 @@ def intraframe_vbs(current_coor:tuple, original_block: np.ndarray, reconstructed
     for centered_top_left_index in range(len(top_lefts)):
         centered_top_left = top_lefts[centered_top_left_index]
         current_block = original_block[centered_top_left[0]:centered_top_left[0] + subblock_params_i, centered_top_left[1]:centered_top_left[1] + subblock_params_i]
-        hor_top_left, _ = extend_block(centered_top_left, subblock_params_i, (0, 0, 0, 1), original_block.shape)
-        ver_top_left, _ = extend_block(centered_top_left, subblock_params_i, (1, 0, 0, 0), original_block.shape)
         
         # select vertical edge
-        if hor_top_left[Intraframe.HORIZONTAL.value] == centered_top_left[Intraframe.HORIZONTAL.value] + current_coor[1]:
-            hor_block = np.full((subblock_params_i, 1), 128)
-        else:
-            if centered_top_left_index == 0 or centered_top_left_index == 2:
-                hor_block = reconstructed_block_dump.raw[current_coor[0] + centered_top_left[0]:current_coor[0] + centered_top_left[0] + subblock_params_i, current_coor[1] + centered_top_left[1] - 1:current_coor[1] + centered_top_left[1]]
+        if centered_top_left_index == 0 or centered_top_left_index == 2:
+            # top left or bottom left
+            left_block = block_dict['left']
+            if left_block is None:
+                hor_block = np.full((subblock_params_i, 1), 128)
             else:
-                hor_block = reconstructed_subblocks[hor_top_left[0]:hor_top_left[0] + subblock_params_i, hor_top_left[1]:hor_top_left[1] + 1]
+                if centered_top_left_index == 0:
+                    hor_block = left_block[:, -1][:subblock_params_i].reshape(subblock_params_i, 1)
+                else:
+                    hor_block = left_block[:, -1][subblock_params_i:].reshape(subblock_params_i, 1)
+        else:
+            # top right or bottom right
+            hor_top_left, _ = extend_block(centered_top_left, subblock_params_i, (0, 0, 0, 1), original_block.shape)
+            hor_block = reconstructed_subblocks[hor_top_left[0]:hor_top_left[0] + subblock_params_i, hor_top_left[1]:hor_top_left[1] + 1]
         hor_block = hor_block.repeat(subblock_params_i, Intraframe.HORIZONTAL.value)
-        hor_mae = np.abs(hor_block - current_block).mean().astype(int)
+        hor_mae = np.abs(hor_block - current_block).mean()
 
         # select horizontal edge
-        if ver_top_left[Intraframe.VERTICAL.value] == centered_top_left[Intraframe.VERTICAL.value] + current_coor[0]:
-            ver_block = np.full((1, subblock_params_i), 128)
-        else:
-            if centered_top_left_index == 0 or centered_top_left_index == 1:
-                ver_block = reconstructed_block_dump.raw[current_coor[0] + centered_top_left[0] - 1:current_coor[0] + centered_top_left[0], current_coor[1] + centered_top_left[1]:current_coor[1] + centered_top_left[1] + subblock_params_i]
+        if centered_top_left_index == 0 or centered_top_left_index == 1:
+            # top left or top right
+            top_block = block_dict['top']
+            if top_block is None:
+                ver_block = np.full((1, subblock_params_i), 128)
             else:
-                ver_block = reconstructed_subblocks[ver_top_left[0]:ver_top_left[0] + 1, ver_top_left[1]:ver_top_left[1] + subblock_params_i]
+                if centered_top_left_index == 0:
+                    ver_block = top_block[-1, :][:subblock_params_i].reshape(1, subblock_params_i)
+                else:
+                    ver_block = top_block[-1, :][subblock_params_i:].reshape(1, subblock_params_i)
+        else:
+            # bottom left or bottom right
+            ver_top_left, _ = extend_block(centered_top_left, subblock_params_i, (1, 0, 0, 0), original_block.shape)
+            ver_block = reconstructed_subblocks[ver_top_left[0]:ver_top_left[0] + 1, ver_top_left[1]:ver_top_left[1] + subblock_params_i]
         ver_block = ver_block.repeat(subblock_params_i, Intraframe.VERTICAL.value)
-        ver_mae = np.abs(ver_block - current_block).mean().astype(int)
+        ver_mae = np.abs(ver_block - current_block).mean()
         predictor_block = None
         if ver_mae < hor_mae:
             current_predictor = MotionVector(Intraframe.VERTICAL.value, -1, mae=ver_mae)
@@ -473,100 +479,146 @@ def interpolate_search_window(search_window, search_window_coor, params_i, block
 
     return [item for sublist in search_window_list for item in sublist]
 
-"""
-    Calculate intra-frame prediction.
-    No parallisim due to block dependency.
-
-    Parameters:
-        frame (Frame): The current frame.
-        q_matrix (np.ndarray): The quantization matrix.
-
-    Returns:
-        qtc_block_dump (QTCFrame): The quantized transformed coefficients.
-        predictor_dump (MotionVectorFrame): The predictor blocks.
-        reconstructed_block_dump (Frame): The reconstructed blocks.
-"""
-def intraframe_prediction(frame: Frame, q_matrix: np.ndarray, params: Params) -> tuple:
-    height, width = frame.shape
-    block_frame = frame.pixel_to_block().astype(int)
-    reconstructed_block_dump = Frame(frame.index, height, width, params_i=frame.params_i, data=np.empty(frame.shape, dtype=int))
-    predictor_dump = MotionVectorFrame(is_intraframe=True, vbs_enable=params.VBSEnable)
-    qtc_block_dump = QTCFrame(params_i=frame.params_i, vbs_enable=params.VBSEnable)
-    y_counter = 0
-    x_counter = 0
-    prev_predictor = None
-    split_counter = 0
-    for y in range(0, height, frame.params_i):
-        predictor_dump.new_row()
-        qtc_block_dump.new_row()
-        for x in range(0, width, frame.params_i):
-            current_coor = (y, x)
-            current_block = block_frame[y_counter, x_counter]
-            hor_top_left, _ = extend_block(current_coor, frame.params_i, (0, 0, 0, 1), (height, width))
-            ver_top_left, _ = extend_block(current_coor, frame.params_i, (1, 0, 0, 0), (height, width))
-            
-            # select vertical edge
-            if hor_top_left[Intraframe.HORIZONTAL.value] == current_coor[Intraframe.HORIZONTAL.value]:
-                hor_block = np.full((frame.params_i, 1), 128)
+def get_next_dispatchable_block(dispatched_array, shape, params_i):
+    """
+        Get next processing block for intraframe prediction
+    """
+    dispatchable_list = []
+    invalidate_list = []
+    true_array = np.argwhere(dispatched_array == True)
+    if len(true_array) == 0:
+        dispatchable_list.append(dict(
+            left=None,
+            top=None,
+            coor=(0, 0)
+        ))
+    else:
+        for item in true_array:
+            item = tuple(item)
+            y = item[0] * params_i
+            x = item[1] * params_i
+            is_right_appended = False
+            is_bottom_appended = False
+            right_coor = (y, x + params_i)
+            bottom_coor = (y  + params_i, x)
+            if right_coor[1] < shape[1]:
+                    # inside the frame
+                    if right_coor[0] == 0:
+                        # does not require a top block
+                        is_right_appended = True
+                        dispatchable_list.append(dict(
+                            left=item,
+                            top=None,
+                            coor=(right_coor[0] // params_i, right_coor[1] // params_i)
+                        ))
+                    else:
+                        # require a top block
+                        top_block_coor = (right_coor[0] - params_i, right_coor[1])
+                        top_block_index = (top_block_coor[0] // params_i, top_block_coor[1] // params_i)
+                        top_block_status = dispatched_array[top_block_index]
+                        if top_block_status:
+                            # top block is dispatched
+                            is_right_appended = True
+                            dispatchable_list.append(dict(
+                                left=item,
+                                top=top_block_index,
+                                coor=(right_coor[0] // params_i, right_coor[1] // params_i)
+                            ))
             else:
-                hor_block = reconstructed_block_dump.raw[hor_top_left[0]:hor_top_left[0] + frame.params_i, hor_top_left[1]:hor_top_left[1] + 1]
-            hor_block = hor_block.repeat(frame.params_i, Intraframe.HORIZONTAL.value)
-            hor_mae = np.abs(hor_block - current_block).mean().astype(int)
-
-            # select horizontal edge
-            if ver_top_left[Intraframe.VERTICAL.value] == current_coor[Intraframe.VERTICAL.value]:
-                ver_block = np.full((1, frame.params_i), 128)
-            else:
-                ver_block = reconstructed_block_dump.raw[ver_top_left[0]:ver_top_left[0] + 1, ver_top_left[1]:ver_top_left[1] + frame.params_i]
-            ver_block = ver_block.repeat(frame.params_i, Intraframe.VERTICAL.value)
-            ver_mae = np.abs(ver_block - current_block).mean().astype(int)
-
-            predictor_block = None
-            if ver_mae < hor_mae:
-                current_predictor = MotionVector(Intraframe.VERTICAL.value, -1, mae=ver_mae)
-                predictor_block = ver_block
-            else:
-                current_predictor = MotionVector(Intraframe.HORIZONTAL.value, -1, mae=hor_mae)
-                predictor_block = hor_block
-
-            qtc_block = QTCBlock(block=current_block - predictor_block, q_matrix=q_matrix)
-            qtc_block.block_to_qtc()
-            reconstructed_block = qtc_block.block + predictor_block
-            diff_predictor = current_predictor - prev_predictor if prev_predictor is not None else current_predictor
-            prev_predictor = current_predictor
-
-            if params.VBSEnable:
-                vbs_qtc_block, vbs_reconstructed_block, vbs_predictor = intraframe_vbs(current_coor, current_block, reconstructed_block, reconstructed_block_dump, qtc_block, diff_predictor, params)
-                reconstructed_block = vbs_reconstructed_block
-                if vbs_predictor is not None:
-                    qtc_block = dict(
-                        vbs=VBSMarker.SPLIT,
-                        qtc_block=vbs_qtc_block,
-                    )
-                    current_predictor = dict(
-                        vbs=VBSMarker.SPLIT,
-                        predictor=vbs_predictor,
-                    )
-                    prev_predictor = vbs_predictor[-1]
-                    split_counter += 1
-                    print('vbs used in Frame', frame.index, current_coor)
+                # outside the frame
+                is_right_appended = True
+            if bottom_coor[0] < shape[0]:
+                # inside the frame
+                if bottom_coor[1] == 0:
+                    # does not require a left block
+                    is_bottom_appended = True
+                    dispatchable_list.append(dict(
+                        left=None,
+                        top=item,
+                        coor=(bottom_coor[0] // params_i, bottom_coor[1] // params_i)
+                    ))
                 else:
-                    qtc_block = dict(
-                        vbs=VBSMarker.UNSPLIT,
-                        qtc_block=qtc_block,
-                    )
-                    current_predictor = dict(
-                        vbs=VBSMarker.UNSPLIT,
-                        predictor=current_predictor,
-                    )
+                    # require a left block
+                    left_block_coor = (bottom_coor[0], bottom_coor[1] - params_i)
+                    left_block_index = (left_block_coor[0] // params_i, left_block_coor[1] // params_i)
+                    left_block_status = dispatched_array[left_block_index ]
+                    if left_block_status:
+                        # left block is dispatched
+                        is_bottom_appended = True
+                        dispatchable_list.append(dict(
+                            left=left_block_index,
+                            top=item,
+                            coor=(bottom_coor[0] // params_i, bottom_coor[1] // params_i)
+                        ))
+            else:
+                # outside the frame
+                is_bottom_appended = True
+            if is_right_appended and is_bottom_appended:
+                invalidate_list.append(item)
+    dispatchable_list = [dict(t) for t in set(tuple(d.items()) for d in dispatchable_list)]
+    return dispatchable_list, invalidate_list
 
-            predictor_dump.append(current_predictor)
-            qtc_block_dump.append(qtc_block)
-            reconstructed_block_dump.raw[y_counter * frame.params_i:y_counter * frame.params_i + frame.params_i, x_counter * frame.params_i:x_counter * frame.params_i + frame.params_i] = reconstructed_block
-            x_counter += 1
-        y_counter += 1
-        x_counter = 0
-    return (qtc_block_dump, predictor_dump, reconstructed_block_dump, split_counter)
+def intraframe_prediction(index, coor_dict, block_dict, q_matrix: np.ndarray, params: Params, prev_predictor) -> tuple:
+    current_coor = coor_dict['current']
+    current_block = block_dict['current']
+    left_coor = coor_dict['left']
+    top_coor = coor_dict['top']
+    split_counter = 0
+
+    # select vertical edge
+    if left_coor is None:
+        hor_block = np.full((params.i, 1), 128)
+    else:
+        hor_block = block_dict['left'][:, -1].reshape(params.i, 1)
+    hor_block = hor_block.repeat(params.i, Intraframe.HORIZONTAL.value)
+    hor_mae = np.abs(hor_block - current_block).mean()
+
+    # select horizontal edge
+    if top_coor is None:
+        ver_block = np.full((1, params.i), 128)
+    else:
+        ver_block = block_dict['top'][-1, :].reshape(1, params.i)
+    ver_block = ver_block.repeat(params.i, Intraframe.VERTICAL.value)
+    ver_mae = np.abs(ver_block - current_block).mean()
+
+    predictor_block = None
+    if ver_mae < hor_mae:
+        current_predictor = MotionVector(Intraframe.VERTICAL.value, -1, mae=ver_mae)
+        predictor_block = ver_block
+    else:
+        current_predictor = MotionVector(Intraframe.HORIZONTAL.value, -1, mae=hor_mae)
+        predictor_block = hor_block
+    
+    qtc_block = QTCBlock(block=current_block - predictor_block, q_matrix=q_matrix)
+    qtc_block.block_to_qtc()
+    reconstructed_block = qtc_block.block + predictor_block
+    diff_predictor = current_predictor - prev_predictor if prev_predictor is not None else current_predictor
+
+    if params.VBSEnable:
+        vbs_qtc_block, vbs_reconstructed_block, vbs_predictor = intraframe_vbs(current_block, reconstructed_block, block_dict, qtc_block, diff_predictor, params)
+        reconstructed_block = vbs_reconstructed_block
+        if vbs_predictor is not None:
+            qtc_block = dict(
+                vbs=VBSMarker.SPLIT,
+                qtc_block=vbs_qtc_block,
+            )
+            current_predictor = dict(
+                vbs=VBSMarker.SPLIT,
+                predictor=vbs_predictor,
+            )
+            split_counter += 1
+            print('vbs used in Frame', index, (current_coor[0] * params.i, current_coor[1] * params.i))
+        else:
+            qtc_block = dict(
+                vbs=VBSMarker.UNSPLIT,
+                qtc_block=qtc_block,
+            )
+            current_predictor = dict(
+                vbs=VBSMarker.UNSPLIT,
+                predictor=current_predictor,
+            )
+
+    return coor_dict['current'], qtc_block, current_predictor, reconstructed_block, split_counter
 
 """
     Helper function to calculate the motion vector, residual blocks, and mae values.
@@ -585,7 +637,7 @@ def intraframe_prediction(frame: Frame, q_matrix: np.ndarray, params: Params) ->
         mae_dump (list): The mean absolute errors.
         reconstructed_block_dump (np.ndarray): The reconstructed blocks.
 """
-def mv_parallel_helper(index: int, frame: Frame, params: Params, q_matrix: np.ndarray, y: int) -> tuple:
+def interframe_prediction(index: int, frame: Frame, params: Params, q_matrix: np.ndarray, y: int) -> tuple:
     qtc_block_dump = []
     mv_dump = []
     reconstructed_block_dump = []
@@ -669,13 +721,69 @@ def calc_motion_vector_parallel_helper(frame: Frame, params: Params, q_matrix: n
         raise Exception('Frame index mismatch. Current: {}, Previous: {}'.format(frame.index, frame.prev.index))
     
     if frame.is_intraframe:
-        qtc_block_dump, mv_dump, current_reconstructed_frame, split_counter = intraframe_prediction(frame, q_matrix, params)
+        row_block_no = frame.shape[0] // frame.params_i
+        col_block_no = frame.shape[1] // frame.params_i
+        total_blocks = row_block_no * col_block_no
+        finished_blocks = 0
+        dispatched_array = np.zeros((row_block_no, col_block_no)).astype(bool)
+        reconstructed_block_dump = [[None] * col_block_no for _ in range(row_block_no)]
+        qtc_block_dump = QTCFrame(shape=(row_block_no, col_block_no), vbs_enable=params.VBSEnable)
+        mv_dump = MotionVectorFrame(shape=(row_block_no, col_block_no), vbs_enable=params.VBSEnable, is_intraframe=frame.is_intraframe)
+        split_counter = 0
+        while finished_blocks < total_blocks:
+            jobs = []
+            dispatchable_list, invalidate_list = get_next_dispatchable_block(dispatched_array, frame.shape, frame.params_i)
+            for item in dispatchable_list:
+                left_coor_index = item['left']
+                top_coor_index = item['top']
+                coor_index = item['coor']
+                coor = (coor_index[0] * frame.params_i, coor_index[1] * frame.params_i)
+                left_block = reconstructed_block_dump[left_coor_index[0]][left_coor_index[1]] if left_coor_index is not None else None
+                top_block = reconstructed_block_dump[top_coor_index[0]][top_coor_index[1]] if top_coor_index is not None else None
+                current_block = frame.raw[coor[0]:coor[0] + frame.params_i, coor[1]:coor[1] + frame.params_i]
+                if params.VBSEnable:
+                    prev_predictor = mv_dump.raw[left_coor_index[0]][left_coor_index[1]] if left_coor_index is not None else None
+                    if prev_predictor is not None:
+                        if prev_predictor['vbs'] is VBSMarker.SPLIT:
+                            prev_predictor = prev_predictor['predictor'][-1]
+                        else:
+                            prev_predictor = prev_predictor['predictor']
+                else:
+                    prev_predictor = mv_dump.raw[left_coor_index[0]][left_coor_index[1]] if left_coor_index is not None else None
+                job = pool.apply_async(func=intraframe_prediction, args=(
+                    frame.index,
+                    dict(
+                        left=left_coor_index,
+                        top=top_coor_index,
+                        current=coor_index
+                    ),
+                    dict(
+                        left=left_block,
+                        top=top_block,
+                        current=current_block
+                    ),
+                    q_matrix,
+                    params,
+                    prev_predictor,
+                ))
+                jobs.append(job)
+            for item in invalidate_list:
+                dispatched_array[item] = False
+            for job in jobs: 
+                result = job.get()
+                current_coor = result[0]
+                dispatched_array[current_coor] = True
+                reconstructed_block_dump[current_coor[0]][current_coor[1]] = result[3]
+                qtc_block_dump.set(current_coor, result[1])
+                mv_dump.set(current_coor, result[2])
+                split_counter += result[4]
+                finished_blocks += 1  
     else:
         jobs = []
         results = []
         counter = 0
         for y in range(0, frame.shape[0], frame.params_i):
-            job = pool.apply_async(func=mv_parallel_helper, args=(
+            job = pool.apply_async(func=interframe_prediction, args=(
                 counter,
                 frame, 
                 params, 
@@ -700,11 +808,9 @@ def calc_motion_vector_parallel_helper(frame: Frame, params: Params, q_matrix: n
             reconstructed_block_dump[index] = result[3]
             split_counter += result[4]
         
-        current_reconstructed_frame = Frame(frame=frame)
-        current_reconstructed_frame.block_to_pixel(reconstructed_block_dump)
-
+    current_reconstructed_frame = Frame(frame=frame)
+    current_reconstructed_frame.block_to_pixel(reconstructed_block_dump)
     current_reconstructed_frame.convert_within_range()
-
     current_reconstructed_frame.dump(reconstructed_path.joinpath('{}'.format(frame.index)))
     
     return current_reconstructed_frame, mv_dump, qtc_block_dump, split_counter
