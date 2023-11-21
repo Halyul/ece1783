@@ -1,9 +1,9 @@
 import numpy as np
-from multiprocessing import Pool
+from multiprocessing import Pool, Queue
 from pathlib import Path
 
-from lib.config.config import Params
-from lib.components.frame import Frame
+from lib.config.config import Params, Config
+from lib.components.frame import Frame, extend_block
 from lib.components.qtc import QTCFrame
 from lib.components.mv import MotionVectorFrame
 from lib.enums import VBSMarker
@@ -89,7 +89,7 @@ def get_next_dispatchable_block(dispatched_array, shape, params_i):
     dispatchable_list = [dict(t) for t in set(tuple(d.items()) for d in dispatchable_list)]
     return dispatchable_list, invalidate_list
 
-def calc_motion_vector_parallel_helper(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed_path: Path, pool: Pool) -> tuple:
+def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed_path: Path, pool: Pool) -> tuple:
     """
         Calculate the motion vector for a block from the search window in parallel.
 
@@ -234,3 +234,81 @@ def calc_motion_vector_parallel_helper(frame: Frame, params: Params, q_matrix: n
     current_reconstructed_frame.dump(reconstructed_path.joinpath('{}'.format(frame.index)))
     
     return current_reconstructed_frame, mv_dump, qtc_block_dump, split_counter
+
+def processing_mode3(frame: Frame, config: Config, q_matrix: np.ndarray, reconstructed_path: Path, prev_data_queue: Queue, next_data_queue: Queue, write_data_func: callable):
+    """
+        Calculate the motion vector for a block from the search window in parallel mode 3.
+
+        Parameters:
+            frame (Frame): The current frame.
+            params_r (int): The search window size.
+            q_matrix (np.ndarray): The quantization matrix.
+            reconstructed_path (Path): The path to write the reconstructed frame to.
+            prev_data_queue (Queue): The queue of previous data.
+            current_data_queue (Queue): The queue of current data.
+
+        Returns:
+            frame (Frame): The current reconstructed frame.
+            mv_dump (MotionVectorFrame): The motion vectors.
+            qtc_block_dump (QTCFrame): The quantized transformed coefficients.
+    """
+    print("Processing", frame.index)
+    params = config.params
+    current_reconstructed_frame = None
+    if frame.is_intraframe:
+        qtc_block_dump, mv_dump, current_reconstructed_frame, split_counter = intraframe_prediction_mode0(frame, q_matrix, params, next_data_queue)
+    else:
+        empty_frame = Frame(-1, frame.height, frame.width, params_i=params.i, data=np.full(frame.height*frame.width, 256).reshape(frame.height, frame.width).astype(np.uint16))
+        frame.prev = empty_frame.copy()
+        row_block_no = frame.height // frame.params_i
+        col_block_no = frame.width // frame.params_i
+        reconstructed_block_dump = [[None] * col_block_no for _ in range(row_block_no)]
+        qtc_block_dump = QTCFrame(shape=(row_block_no, col_block_no), vbs_enable=params.VBSEnable)
+        mv_dump = MotionVectorFrame(shape=(row_block_no, col_block_no), vbs_enable=params.VBSEnable, fme_enable=params.FMEEnable)
+        split_counter = 0
+        for y in range(0, frame.height, frame.params_i):
+            # clear prev_motion_vector when a row is finished
+            prev_motion_vector = None
+            for x in range(0, frame.width, frame.params_i):
+                current_coor = (y, x)
+                search_window_top_left, search_window_bottom_right = extend_block(current_coor, frame.params_i, (params.r, params.r, params.r, params.r), frame.shape)
+                current_search_window = frame.prev.raw[search_window_top_left[0]:search_window_bottom_right[0], search_window_top_left[1]:search_window_bottom_right[1]]
+                while np.isin(256, current_search_window):
+                    prev_reconstructed_frame_data = prev_data_queue.get()
+                    reconstructed_blocks = prev_reconstructed_frame_data[1]
+                    current_frame = frame
+                    for reconstructed_block_index in range(len(reconstructed_blocks)):
+                        reconstructed_block = reconstructed_blocks[reconstructed_block_index]
+                        if current_frame.prev is None:
+                            current_frame.prev = empty_frame.copy()
+                        current_frame.prev.set(prev_reconstructed_frame_data[0], reconstructed_block)
+                        current_frame = current_frame.prev
+                        if reconstructed_block_index + 1 == params.nRefFrames:
+                            break
+                
+                # block is processable as the search window is filled
+                current_coor, qtc_block, min_motion_vector, reconstructed_block, current_split_counter = interframe_block_prediction(current_coor, frame, params, q_matrix, prev_motion_vector, next_data_queue)
+                if current_split_counter > 0:
+                    split_counter += current_split_counter
+                if params.VBSEnable:
+                    if min_motion_vector['vbs'] == VBSMarker.SPLIT:
+                        prev_motion_vector = min_motion_vector['predictor'][-1]
+                    else:
+                        prev_motion_vector = min_motion_vector['predictor']
+                else:
+                    prev_motion_vector = min_motion_vector
+                current_coor_index = (current_coor[0] // frame.params_i, current_coor[1] // frame.params_i)
+                reconstructed_block_dump[current_coor_index[0]][current_coor_index[1]] = reconstructed_block
+                qtc_block_dump.set(current_coor_index, qtc_block)
+                mv_dump.set(current_coor_index, min_motion_vector)
+                # print("done", current_coor, frame.index)
+    
+    if current_reconstructed_frame is None:
+        current_reconstructed_frame = Frame(frame=frame)
+        current_reconstructed_frame.block_to_pixel(reconstructed_block_dump)
+
+    current_reconstructed_frame.convert_within_range()
+    current_reconstructed_frame.dump(reconstructed_path.joinpath('{}'.format(frame.index)))
+    
+    print("Frame {} reconstructed".format(frame.index))
+    write_data_func((frame.index, mv_dump, qtc_block_dump), config)

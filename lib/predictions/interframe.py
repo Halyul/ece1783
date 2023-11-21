@@ -1,7 +1,7 @@
 import math
 import numpy as np
 from lib.config.config import Params
-from lib.components.frame import Frame, extend_block
+from lib.components.frame import Frame, extend_block, convert_within_range
 from lib.components.qtc import QTCBlock, quantization_matrix
 from lib.components.mv import MotionVector
 from lib.enums import VBSMarker
@@ -216,6 +216,7 @@ def calc_fast_motion_vector(block: np.ndarray, block_coor: tuple, frame: Frame, 
 
     flag = False
     search_origin = (block_coor[0], block_coor[1])
+    search_window_top_left, search_window_bottom_right = extend_block(block_coor, params_i, (params.r, params.r, params.r, params.r), frame.shape)
     while not flag:
         # search mvp
         new_coor = (search_origin[0] + mvp.y, search_origin[1] + mvp.x)
@@ -229,7 +230,7 @@ def calc_fast_motion_vector(block: np.ndarray, block_coor: tuple, frame: Frame, 
         ]
         for coor_index in range(len(coors)):
             current_coor = (new_coor[0] + coors[coor_index][0], new_coor[1] + coors[coor_index][1])
-            if current_coor[0] < 0 or current_coor[1] < 0 or current_coor[0] + params_i > frame.shape[0] or current_coor[1] + params_i > frame.shape[1]:
+            if current_coor[0] < 0 or current_coor[1] < 0 or current_coor[0] + params_i > frame.shape[0] or current_coor[1] + params_i > frame.shape[1] or current_coor[0] < search_window_top_left[0] or current_coor[1] < search_window_top_left[1] or current_coor[0] + params_i > search_window_bottom_right[0] or current_coor[1] + params_i > search_window_bottom_right[1]:
                 continue
             top_left, bottom_right = extend_block(current_coor, params_i, (0, 0, 0, 0), frame.shape)
             search_windows = []
@@ -243,7 +244,6 @@ def calc_fast_motion_vector(block: np.ndarray, block_coor: tuple, frame: Frame, 
                     scaled_top_left = (float(scaled_center_top_left[0] + coors[coor_index][0]), float(scaled_center_top_left[1] + coors[coor_index][1]))
                     # actual top left in the true frame
                     top_left = (scaled_top_left[0] / 2, scaled_top_left[1] / 2)
-                    # TODO: check if this is correct
                     top_left, search_window = get_interpolated_block(baseline_block, top_left, coor_index, current_frame.prev, params_i)
                     if search_window is None:
                         selection_flag = False
@@ -393,9 +393,7 @@ def interpolate_search_window(search_window, search_window_coor, params_i, block
 
     return [item for sublist in search_window_list for item in sublist]
 
-
-
-def interframe_block_prediction(current_coor, frame, params, q_matrix, prev_motion_vector=None):
+def interframe_block_prediction(current_coor, frame, params, q_matrix, prev_motion_vector=None, data_queue=None):
     split_counter = 0
     centered_block = frame.raw[current_coor[0]:current_coor[0] + frame.params_i, current_coor[1]:current_coor[1] + frame.params_i]
 
@@ -446,6 +444,13 @@ def interframe_block_prediction(current_coor, frame, params, q_matrix, prev_moti
                 vbs=VBSMarker.UNSPLIT,
                 predictor=min_motion_vector,
             )
+    if data_queue is not None:
+        reconstructed_blocks = [convert_within_range(reconstructed_block)]
+        current_frame = frame
+        while current_frame.prev is not None:
+            reconstructed_blocks.append(convert_within_range(current_frame.prev.raw[current_coor[0]:current_coor[0] + frame.params_i, current_coor[1]:current_coor[1] + frame.params_i]))
+            current_frame = current_frame.prev
+        data_queue.put((current_coor, reconstructed_blocks))
     return current_coor, qtc_block, min_motion_vector, reconstructed_block, split_counter
 
 def interframe_prediction(index: int, frame: Frame, params: Params, q_matrix: np.ndarray, y: int) -> tuple:
@@ -478,6 +483,10 @@ def interframe_prediction(index: int, frame: Frame, params: Params, q_matrix: np
         if params.VBSEnable:
             if min_motion_vector['vbs'] == VBSMarker.SPLIT:
                 prev_motion_vector = min_motion_vector['predictor'][-1]
+            else:
+                prev_motion_vector = min_motion_vector['predictor']
+        else:
+            prev_motion_vector = min_motion_vector
 
         qtc_block_dump.append(qtc_block)
         reconstructed_block_dump.append(reconstructed_block)

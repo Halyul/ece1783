@@ -28,7 +28,7 @@ params:
   FastME: true # true, false
   RCflag: 1 # 0 -> OFF, 1 -> ON, 2, 3
   targetBR: 1 mbps # <x> bps, <x> kbps, <x> mbps
-  ParallelMode: 0 # 0, 1, 2, 3
+  ParallelMode: 3 # 0, 1, 2, 3
 
 statistics:
   path: statistics

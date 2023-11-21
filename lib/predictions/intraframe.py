@@ -1,11 +1,12 @@
 import numpy as np
 from lib.config.config import Params
 from lib.enums import Intraframe
-from lib.components.frame import Frame, extend_block
+from lib.components.frame import Frame, extend_block, convert_within_range
 from lib.components.qtc import QTCBlock, QTCFrame, quantization_matrix
 from lib.components.mv import MotionVector, MotionVectorFrame
 from lib.enums import VBSMarker
 from lib.predictions.misc import rdo
+from multiprocessing import Queue
 
 def intraframe_vbs(reconstructed_block: np.ndarray, block_dict, qtc_block: QTCBlock, diff_predictor: int, params: Params):
     original_block = block_dict['current']
@@ -144,10 +145,9 @@ def intraframe_prediction(index, coor_dict, block_dict, q_matrix: np.ndarray, pa
                 vbs=VBSMarker.UNSPLIT,
                 predictor=current_predictor,
             )
-
     return coor_dict['current'], qtc_block, current_predictor, reconstructed_block, split_counter
 
-def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Params) -> tuple:
+def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Params, data_queue: Queue = None) -> tuple:
     """
         Calculate intra-frame prediction.
         No parallisim due to block dependency.
@@ -155,6 +155,8 @@ def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Para
         Parameters:
             frame (Frame): The current frame.
             q_matrix (np.ndarray): The quantization matrix.
+            params (Params): The parameters.
+            data_queue (Queue): The queue to store the data.
 
         Returns:
             qtc_block_dump (QTCFrame): The quantized transformed coefficients.
@@ -241,6 +243,8 @@ def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Para
             predictor_dump.append(current_predictor)
             qtc_block_dump.append(qtc_block)
             reconstructed_block_dump.raw[y_counter * frame.params_i:y_counter * frame.params_i + frame.params_i, x_counter * frame.params_i:x_counter * frame.params_i + frame.params_i] = reconstructed_block
+            if data_queue is not None:
+                data_queue.put((current_coor, [convert_within_range(reconstructed_block)]))
             x_counter += 1
         y_counter += 1
         x_counter = 0

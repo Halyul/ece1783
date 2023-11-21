@@ -154,7 +154,7 @@ class Frame:
             self.width = width
             self.shape = (height, width)
             self.prev = prev
-            self.raw = data
+            self.raw: np.array = data
             self.params_i = params_i
             self.is_intraframe = is_intraframe
         else:
@@ -166,9 +166,12 @@ class Frame:
         self.width = frame.width
         self.shape = frame.shape
         self.prev = frame.prev
-        self.raw = frame.raw
+        self.raw: np.array = frame.raw.copy()
         self.params_i = frame.params_i
         self.is_intraframe = frame.is_intraframe
+
+    def copy(self):
+        return Frame(frame=self)
 
     def read_from_file(self, file_path: pathlib.Path, dtype=np.uint8):
         """
@@ -229,6 +232,16 @@ class Frame:
                 dtype (np.dtype): The data type to convert to.
         """
         self.raw = convert_within_range(self.raw, dtype=dtype)
+
+    def set(self, coor, data):
+        """
+            Set the value of a pixel.
+
+            Parameters:
+                coor (tuple): The coordinate of the pixel.
+                data (int): The value to set.
+        """
+        self.raw[coor[0]:coor[0] + self.params_i, coor[1]:coor[1] + self.params_i] = data
 
     def dump(self, path: pathlib.Path):
         """
