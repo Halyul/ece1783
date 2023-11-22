@@ -85,7 +85,6 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
     prev_frame = Frame(-1, height, width, params_i=config.params.i, data=np.full(height*width, 128).reshape(height, width))
     split_counters = []
     if config.params.ParallelMode == 3:
-        # TODO: nRefFrames
         data_queues = []
         while run_flag:
             file = config.output_path.original_folder.joinpath(str(counter))
@@ -121,7 +120,7 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
             counter += 1
             if meta_file.exists():
                 l = meta_file.read_text().split(',')
-                last = int(l[0])
+                stop_at = last = int(l[0])
                 if counter == last:
                     run_flag = False
 
