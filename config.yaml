@@ -22,13 +22,13 @@ params:
   stop_at: -1 # stop after processing how many frames, -1 to disable
   qp: 5
   i_period: 10
-  nRefFrames: 2 # 1, 2, 3, 4
+  nRefFrames: 1 # 1, 2, 3, 4
   VBSEnable: true # true, false
   FMEEnable: true # true, false
   FastME: true # true, false
   RCflag: 0 # 0 -> OFF, 1 -> ON, 2, 3
   targetBR: 1 mbps # <x> bps, <x> kbps, <x> mbps
-  ParallelMode: 2 # 0, 1, 2, 3
+  ParallelMode: 1 # 0, 1, 2, 3
 
 statistics:
   path: statistics
