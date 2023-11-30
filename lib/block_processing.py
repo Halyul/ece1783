@@ -169,11 +169,14 @@ def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed
                     split_counter += result[4]
                     finished_blocks += 1
         elif params.ParallelMode == 0:
-            qtc_block_dump, mv_dump, current_reconstructed_frame, split_counter = intraframe_prediction_mode0(frame, q_matrix, params)
+            qtc_block_dump, mv_dump, current_reconstructed_frame, split_counter, row_number, bitcount_per_frame= intraframe_prediction_mode0(frame, q_matrix, params)
+            bitcount_per_row = bitcount_per_frame/row_number
+
     elif params.ParallelMode == 2 or params.ParallelMode == 0:
         jobs = []
         results = []
         counter = 0
+        bitcount_per_frame = 0
         for y in range(0, frame.shape[0], frame.params_i):
             job = pool.apply_async(func=interframe_prediction, args=(
                 counter,
@@ -184,7 +187,9 @@ def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed
             ))
             jobs.append(job)
             counter += 1
-
+            result = job.get()
+            bitcount_per_frame += result[5]
+        bitcount_per_row = bitcount_per_frame/counter
         for job in jobs:
             results.append(job.get())
         
@@ -233,7 +238,7 @@ def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed
     current_reconstructed_frame.convert_within_range()
     current_reconstructed_frame.dump(reconstructed_path.joinpath('{}'.format(frame.index)))
     
-    return current_reconstructed_frame, mv_dump, qtc_block_dump, split_counter
+    return current_reconstructed_frame, mv_dump, qtc_block_dump, split_counter, bitcount_per_row 
 
 def processing_mode3(frame: Frame, config: Config, q_matrix: np.ndarray, reconstructed_path: Path, prev_data_queue: Queue, next_data_queue: Queue, write_data_func: callable):
     """

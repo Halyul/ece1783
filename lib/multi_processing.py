@@ -84,6 +84,7 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
     jobs = []
     prev_frame = Frame(-1, height, width, params_i=config.params.i, data=np.full(height*width, 128).reshape(height, width))
     split_counters = []
+    total_bitcount_per_row = 0
     if config.params.ParallelMode == 3:
         data_queues = []
         while run_flag:
@@ -144,7 +145,7 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
             reconstructed_path = config.output_path.reconstructed_folder
             if not frame.is_intraframe:
                 frame.prev = prev_frame
-            prev_frame, mv_dump, qtc_block_dump, split_counter = processing(frame, config.params, q_matrix, reconstructed_path, pool)
+            prev_frame, mv_dump, qtc_block_dump, split_counter, bitcount_per_row = processing(frame, config.params, q_matrix, reconstructed_path, pool)
             split_counters.append(dict(
                 index=counter,
                 counter=split_counter,
@@ -164,13 +165,15 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
 
             job = pool.apply_async(func=write_data_dispatcher, args=((frame.index, mv_dump, qtc_block_dump), config,))
             jobs.append(job)
+            total_bitcount_per_row += bitcount_per_row
             counter += 1
             if meta_file.exists():
                 l = meta_file.read_text().split(',')
                 last = int(l[0])
                 if counter == last:
                     run_flag = False
-
+        averge_bitcount_per_row = total_bitcount_per_row/counter
+        print(f'the avg_bitcount_per_row = {averge_bitcount_per_row},{counter}')
         with config.output_path.split_counter_file.open('a') as f:
             total_blocks = (height // config.params.i) * (width // config.params.i)
             f.write("{} {}\n".format(-1, sum(split_counter['counter'] for split_counter in split_counters) /

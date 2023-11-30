@@ -82,9 +82,9 @@ def intraframe_vbs(reconstructed_block: np.ndarray, block_dict, qtc_block: QTCBl
         qtc_stack = np.concatenate((np.concatenate((qtc_subblocks[0], qtc_subblocks[1]), axis=1), np.concatenate((qtc_subblocks[2], qtc_subblocks[3]), axis=1)), axis=0)
         temp_stack = np.concatenate((np.concatenate((residual_subblocks[0], residual_subblocks[1]), axis=1), np.concatenate((residual_subblocks[2], residual_subblocks[3]), axis=1)), axis=0)
         qtc_block = QTCBlock(qtc_block=qtc_stack, block=temp_stack)
-        return qtc_block, reconstructed_subblocks, subpredictor_dump
+        return qtc_block, reconstructed_subblocks, subpredictor_dump, current_predictor
     else:
-        return qtc_block, reconstructed_block, None
+        return qtc_block, reconstructed_block, None, current_predictor
 
 def intraframe_prediction(index, coor_dict, block_dict, q_matrix: np.ndarray, params: Params, prev_predictor) -> tuple:
     current_coor = coor_dict['current']
@@ -172,6 +172,7 @@ def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Para
     x_counter = 0
     prev_predictor = None
     split_counter = 0
+    bitcount_per_frame = 0
     for y in range(0, height, frame.params_i):
         predictor_dump.new_row()
         qtc_block_dump.new_row()
@@ -210,15 +211,17 @@ def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Para
             reconstructed_block = qtc_block.block + predictor_block
             diff_predictor = current_predictor - prev_predictor if prev_predictor is not None else current_predictor
             prev_predictor = current_predictor
+            bitcount_per_block = len(qtc_block.to_str()) + len(current_predictor.to_str(is_intraframe=True))
 
             if params.VBSEnable:
-                vbs_qtc_block, vbs_reconstructed_block, vbs_predictor = intraframe_vbs(reconstructed_block, dict(
+                vbs_qtc_block, vbs_reconstructed_block, vbs_predictor, current_mv = intraframe_vbs(reconstructed_block, dict(
                     current=current_block,
                     left=hor_block,
                     top=ver_block,
                 ), qtc_block, diff_predictor, params)
                 reconstructed_block = vbs_reconstructed_block
                 if vbs_predictor is not None:
+                    bitcount_per_block = len(vbs_qtc_block.to_str()) + len(current_mv.to_str(is_intraframe=True))
                     qtc_block = dict(
                         vbs=VBSMarker.SPLIT,
                         qtc_block=vbs_qtc_block,
@@ -231,6 +234,7 @@ def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Para
                     split_counter += 1
                     print('vbs used in Frame', frame.index, current_coor)
                 else:
+                    bitcount_per_block = len(qtc_block.to_str()) + len(current_predictor.to_str(is_intraframe=True))
                     qtc_block = dict(
                         vbs=VBSMarker.UNSPLIT,
                         qtc_block=qtc_block,
@@ -239,7 +243,7 @@ def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Para
                         vbs=VBSMarker.UNSPLIT,
                         predictor=current_predictor,
                     )
-
+            bitcount_per_frame += bitcount_per_block
             predictor_dump.append(current_predictor)
             qtc_block_dump.append(qtc_block)
             reconstructed_block_dump.raw[y_counter * frame.params_i:y_counter * frame.params_i + frame.params_i, x_counter * frame.params_i:x_counter * frame.params_i + frame.params_i] = reconstructed_block
@@ -248,4 +252,4 @@ def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Para
             x_counter += 1
         y_counter += 1
         x_counter = 0
-    return (qtc_block_dump, predictor_dump, reconstructed_block_dump, split_counter)
+    return (qtc_block_dump, predictor_dump, reconstructed_block_dump, split_counter, y_counter, bitcount_per_frame)

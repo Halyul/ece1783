@@ -44,9 +44,9 @@ def interframe_vbs(original_block_coor: tuple, original_block: np.ndarray, origi
         temp_stack = np.concatenate((np.concatenate((residual_subblocks[0], residual_subblocks[1]), axis=1), np.concatenate((residual_subblocks[2], residual_subblocks[3]), axis=1)), axis=0)
         reconstructed_stack = np.concatenate((np.concatenate((reconstructed_subblocks[0], reconstructed_subblocks[1]), axis=1), np.concatenate((reconstructed_subblocks[2], reconstructed_subblocks[3]), axis=1)), axis=0)
         qtc_block = QTCBlock(qtc_block=qtc_stack, block=temp_stack)
-        return qtc_block, reconstructed_stack, mv_subblocks
+        return qtc_block, reconstructed_stack, mv_subblocks, min_motion_vector
     else:
-        return qtc_block, reconstructed_block, None
+        return qtc_block, reconstructed_block, None, min_motion_vector
 
 def get_interpolated_block(current_block, current_coor, location, og_search_window, og_search_window_top_left, params_i):
     # location = [0, 1, 2, 3] #top, bottom, left, right
@@ -431,11 +431,13 @@ def interframe_block_prediction(current_coor, frame, params, q_matrix, prev_moti
     reconstructed_block = qtc_block.block + min_block
     diff_mv = min_motion_vector - prev_motion_vector if prev_motion_vector is not None else min_motion_vector
     prev_motion_vector = min_motion_vector
+    bitcount_per_block = len(qtc_block.to_str()) + len(min_motion_vector.to_str(is_intraframe=False))
 
     if params.VBSEnable:
-        vbs_qtc_block, vbs_reconstructed_block, vbs_mv = interframe_vbs(current_coor, centered_block, search_windows, top_left, reconstructed_block, qtc_block, diff_mv, prev_motion_vector, params)
+        vbs_qtc_block, vbs_reconstructed_block, vbs_mv, current_mv = interframe_vbs(current_coor, centered_block, search_windows, top_left, reconstructed_block, qtc_block, diff_mv, prev_motion_vector, params)
         reconstructed_block = vbs_reconstructed_block
         if vbs_mv is not None:
+            bitcount_per_block = len(vbs_qtc_block.to_str()) + len(current_mv.to_str(is_intraframe=False))
             qtc_block = dict(
                 vbs=VBSMarker.SPLIT,
                 qtc_block=vbs_qtc_block,
@@ -448,6 +450,7 @@ def interframe_block_prediction(current_coor, frame, params, q_matrix, prev_moti
             print('vbs used in Frame', frame.index, current_coor)
             split_counter += 1
         else:
+            bitcount_per_block = len(qtc_block.to_str()) + len(min_motion_vector.to_str(is_intraframe=False))
             qtc_block = dict(
                 vbs=VBSMarker.UNSPLIT,
                 qtc_block=qtc_block,
@@ -456,6 +459,7 @@ def interframe_block_prediction(current_coor, frame, params, q_matrix, prev_moti
                 vbs=VBSMarker.UNSPLIT,
                 predictor=min_motion_vector,
             )
+
     if data_queue is not None:
         reconstructed_blocks = [convert_within_range(reconstructed_block)]
         current_frame = frame
@@ -463,7 +467,7 @@ def interframe_block_prediction(current_coor, frame, params, q_matrix, prev_moti
             reconstructed_blocks.append(convert_within_range(current_frame.prev.raw[current_coor[0]:current_coor[0] + frame.params_i, current_coor[1]:current_coor[1] + frame.params_i]))
             current_frame = current_frame.prev
         data_queue.put((current_coor, reconstructed_blocks))
-    return current_coor, qtc_block, min_motion_vector, reconstructed_block, split_counter
+    return current_coor, qtc_block, min_motion_vector, reconstructed_block, split_counter, bitcount_per_block
 
 def interframe_prediction(index: int, frame: Frame, params: Params, q_matrix: np.ndarray, y: int) -> tuple:
     """
@@ -488,8 +492,10 @@ def interframe_prediction(index: int, frame: Frame, params: Params, q_matrix: np
     reconstructed_block_dump = []
     prev_motion_vector = None
     split_counter = 0
+    bit_count_in_onerow= 0
     for x in range(0, frame.width, frame.params_i):
-        _, qtc_block, min_motion_vector, reconstructed_block, current_split_counter = interframe_block_prediction((y, x), frame, params, q_matrix, prev_motion_vector)
+        _, qtc_block, min_motion_vector, reconstructed_block, current_split_counter , bitcount_per_block= interframe_block_prediction((y, x), frame, params, q_matrix, prev_motion_vector)
+        
         if current_split_counter > 0:
             split_counter += current_split_counter
         if params.VBSEnable:
@@ -499,8 +505,8 @@ def interframe_prediction(index: int, frame: Frame, params: Params, q_matrix: np
                 prev_motion_vector = min_motion_vector['predictor']
         else:
             prev_motion_vector = min_motion_vector
-
+        bit_count_in_onerow += bitcount_per_block
         qtc_block_dump.append(qtc_block)
         reconstructed_block_dump.append(reconstructed_block)
         mv_dump.append(min_motion_vector)
-    return (index, qtc_block_dump, mv_dump, reconstructed_block_dump, split_counter)
+    return (index, qtc_block_dump, mv_dump, reconstructed_block_dump, split_counter, bit_count_in_onerow)
