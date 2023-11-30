@@ -18,6 +18,9 @@ class Config:
 
         if self.params.RCflag != 0:
             self.params.add('perframeBR', self.params.targetBR / self.video_params.fps)
+            targetBR_perframe= self.params.perframeBR
+            number_of_rows_perframe = self.video_params.height/self.params.i
+            self.params.add('bitbudgetPerRow', targetBR_perframe / number_of_rows_perframe)
 
         self.output_path.main_folder = pathlib.Path.cwd().joinpath(self.output_path.main_folder)
         if clean_up:
