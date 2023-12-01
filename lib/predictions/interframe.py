@@ -44,9 +44,9 @@ def interframe_vbs(original_block_coor: tuple, original_block: np.ndarray, origi
         temp_stack = np.concatenate((np.concatenate((residual_subblocks[0], residual_subblocks[1]), axis=1), np.concatenate((residual_subblocks[2], residual_subblocks[3]), axis=1)), axis=0)
         reconstructed_stack = np.concatenate((np.concatenate((reconstructed_subblocks[0], reconstructed_subblocks[1]), axis=1), np.concatenate((reconstructed_subblocks[2], reconstructed_subblocks[3]), axis=1)), axis=0)
         qtc_block = QTCBlock(qtc_block=qtc_stack, block=temp_stack)
-        return qtc_block, reconstructed_stack, mv_subblocks, min_motion_vector
+        return qtc_block, reconstructed_stack, mv_subblocks
     else:
-        return qtc_block, reconstructed_block, None, min_motion_vector
+        return qtc_block, reconstructed_block, None
 
 def get_interpolated_block(current_block, current_coor, location, og_search_window, og_search_window_top_left, params_i):
     # location = [0, 1, 2, 3] #top, bottom, left, right
@@ -411,6 +411,7 @@ def interpolate_search_window(search_window, search_window_coor, params_i, block
 
 def interframe_block_prediction(current_coor, frame, params, q_matrix, prev_motion_vector=None, data_queue=None):
     split_counter = 0
+    mv_integrate = ''
     centered_block = frame.raw[current_coor[0]:current_coor[0] + frame.params_i, current_coor[1]:current_coor[1] + frame.params_i]
 
     top_left, bottom_right = extend_block(current_coor, frame.params_i, (params.r, params.r, params.r, params.r), frame.shape)
@@ -434,10 +435,13 @@ def interframe_block_prediction(current_coor, frame, params, q_matrix, prev_moti
     bitcount_per_block = len(qtc_block.to_str()) + len(min_motion_vector.to_str(is_intraframe=False))
 
     if params.VBSEnable:
-        vbs_qtc_block, vbs_reconstructed_block, vbs_mv, current_mv = interframe_vbs(current_coor, centered_block, search_windows, top_left, reconstructed_block, qtc_block, diff_mv, prev_motion_vector, params)
+        vbs_qtc_block, vbs_reconstructed_block, vbs_mv = interframe_vbs(current_coor, centered_block, search_windows, top_left, reconstructed_block, qtc_block, diff_mv, prev_motion_vector, params)
         reconstructed_block = vbs_reconstructed_block
         if vbs_mv is not None:
-            bitcount_per_block = len(vbs_qtc_block.to_str()) + len(current_mv.to_str(is_intraframe=False))
+            for mv in vbs_mv:
+                mv_integrate += mv.to_str(is_intraframe=False)
+            vbs_mv_length = len(mv_integrate)
+            bitcount_per_block = len(vbs_qtc_block.to_str()) + vbs_mv_length
             qtc_block = dict(
                 vbs=VBSMarker.SPLIT,
                 qtc_block=vbs_qtc_block,

@@ -73,6 +73,8 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
     pool = mp.Pool(mp.cpu_count())
     q_matrix = quantization_matrix(config.params.i, config.params.qp)
     counter = 0
+    counter_i = 0
+    counter_p = 0
     run_flag = True
     meta_file = config.output_path.meta_file
     stop_at = config.params.stop_at
@@ -84,7 +86,8 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
     jobs = []
     prev_frame = Frame(-1, height, width, params_i=config.params.i, data=np.full(height*width, 128).reshape(height, width))
     split_counters = []
-    total_bitcount_per_row = 0
+    total_bitcount_per_row_i = 0
+    total_bitcount_per_row_p = 0
     if config.params.ParallelMode == 3:
         data_queues = []
         while run_flag:
@@ -165,15 +168,23 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
 
             job = pool.apply_async(func=write_data_dispatcher, args=((frame.index, mv_dump, qtc_block_dump), config,))
             jobs.append(job)
-            total_bitcount_per_row += bitcount_per_row
+            if frame.is_intraframe:
+                total_bitcount_per_row_i += bitcount_per_row
+                counter_i += 1
+            else: 
+                total_bitcount_per_row_p += bitcount_per_row
+                counter_p += 1
             counter += 1
             if meta_file.exists():
                 l = meta_file.read_text().split(',')
                 last = int(l[0])
                 if counter == last:
                     run_flag = False
-        averge_bitcount_per_row = total_bitcount_per_row/counter
-        print(f'the avg_bitcount_per_row = {averge_bitcount_per_row},{counter}')
+        
+        averge_bitcount_per_row_i = total_bitcount_per_row_i/counter_i
+        averge_bitcount_per_row_p = total_bitcount_per_row_p/counter_p
+        print(f'the avg_bitcount_per_row_for_i_block = {averge_bitcount_per_row_i},number of i_frame: {counter_i}')
+        print(f'the avg_bitcount_per_row_p_for_p_block = {averge_bitcount_per_row_p},number of p_frame: {counter_p}')
         with config.output_path.split_counter_file.open('a') as f:
             total_blocks = (height // config.params.i) * (width // config.params.i)
             f.write("{} {}\n".format(-1, sum(split_counter['counter'] for split_counter in split_counters) /

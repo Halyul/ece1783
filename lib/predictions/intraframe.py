@@ -82,9 +82,9 @@ def intraframe_vbs(reconstructed_block: np.ndarray, block_dict, qtc_block: QTCBl
         qtc_stack = np.concatenate((np.concatenate((qtc_subblocks[0], qtc_subblocks[1]), axis=1), np.concatenate((qtc_subblocks[2], qtc_subblocks[3]), axis=1)), axis=0)
         temp_stack = np.concatenate((np.concatenate((residual_subblocks[0], residual_subblocks[1]), axis=1), np.concatenate((residual_subblocks[2], residual_subblocks[3]), axis=1)), axis=0)
         qtc_block = QTCBlock(qtc_block=qtc_stack, block=temp_stack)
-        return qtc_block, reconstructed_subblocks, subpredictor_dump, current_predictor
+        return qtc_block, reconstructed_subblocks, subpredictor_dump
     else:
-        return qtc_block, reconstructed_block, None, current_predictor
+        return qtc_block, reconstructed_block, None
 
 def intraframe_prediction(index, coor_dict, block_dict, q_matrix: np.ndarray, params: Params, prev_predictor) -> tuple:
     current_coor = coor_dict['current']
@@ -170,6 +170,7 @@ def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Para
     qtc_block_dump = QTCFrame(params_i=frame.params_i, vbs_enable=params.VBSEnable)
     y_counter = 0
     x_counter = 0
+    mv_integrate = ''
     prev_predictor = None
     split_counter = 0
     bitcount_per_frame = 0
@@ -214,14 +215,17 @@ def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Para
             bitcount_per_block = len(qtc_block.to_str()) + len(current_predictor.to_str(is_intraframe=True))
 
             if params.VBSEnable:
-                vbs_qtc_block, vbs_reconstructed_block, vbs_predictor, current_mv = intraframe_vbs(reconstructed_block, dict(
+                vbs_qtc_block, vbs_reconstructed_block, vbs_predictor = intraframe_vbs(reconstructed_block, dict(
                     current=current_block,
                     left=hor_block,
                     top=ver_block,
                 ), qtc_block, diff_predictor, params)
                 reconstructed_block = vbs_reconstructed_block
                 if vbs_predictor is not None:
-                    bitcount_per_block = len(vbs_qtc_block.to_str()) + len(current_mv.to_str(is_intraframe=True))
+                    for mv in vbs_predictor:
+                        mv_integrate += mv.to_str(is_intraframe=True)
+                    vbs_mv_length = len(mv_integrate)
+                    bitcount_per_block = len(vbs_qtc_block.to_str()) + vbs_mv_length
                     qtc_block = dict(
                         vbs=VBSMarker.SPLIT,
                         qtc_block=vbs_qtc_block,
