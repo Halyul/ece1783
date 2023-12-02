@@ -4,11 +4,12 @@ from pathlib import Path
 
 from lib.config.config import Params, Config
 from lib.components.frame import Frame, extend_block
-from lib.components.qtc import QTCFrame
+from lib.components.qtc import QTCFrame, quantization_matrix
 from lib.components.mv import MotionVectorFrame
 from lib.enums import VBSMarker
 from lib.predictions.intraframe import intraframe_prediction, intraframe_prediction_mode0
 from lib.predictions.interframe import interframe_prediction, interframe_block_prediction
+from qp_bitcount import CIF_bitcount_perRow_p, QCIF_bitcount_perRow_p
 
 def get_next_dispatchable_block(dispatched_array, shape, params_i):
     """
@@ -177,13 +178,28 @@ def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed
         results = []
         counter = 0
         bitcount_per_frame = 0
+        table = None
+        qp_rc = None
+        if params.RCflag != 0:
+            bitbudgetPerRow = params.bitbudgetPerRow
+            if frame.height == 288 and frame.width == 352:
+                table = CIF_bitcount_perRow_p
+            elif frame.height == 144 and frame.width == 176:
+                table = QCIF_bitcount_perRow_p
         for y in range(0, frame.shape[0], frame.params_i):
+            if params.RCflag != 0:
+                for index, value in table.items():
+                    if value <= bitbudgetPerRow:
+                        qp_rc = index
+                        break
+                q_matrix = quantization_matrix(params.i, qp_rc)
             job = pool.apply_async(func=interframe_prediction, args=(
                 counter,
                 frame, 
                 params, 
                 q_matrix,
                 y,
+                qp_rc
             ))
             jobs.append(job)
             counter += 1

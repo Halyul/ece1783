@@ -158,12 +158,13 @@ def reordering_helper(shape: tuple, current: tuple, row: int) -> tuple:
 
 class QTCBlock:
 
-    def __init__(self, block=None, qtc_block=None, q_matrix=None):
+    def __init__(self, block=None, qtc_block=None, q_matrix=None, qp = None):
         self.qtc = None
         self.block = block
         self.q_matrix = q_matrix
         self.qtc_block = qtc_block
         self.str = None
+        self.qp = qp
 
     def tc(self) -> np.ndarray:
         """
@@ -275,7 +276,7 @@ class QTCFrame:
                     text += item.to_str()
         return binstr_to_bytes(text)
     
-    def read_from_file(self, path: pathlib.Path, q_matrix: np.ndarray, width: int, params_qp: int) -> None:
+    def read_from_file(self, path: pathlib.Path, width: int) -> None:
         """
             Read QTC Frame from file
 

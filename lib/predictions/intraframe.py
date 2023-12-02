@@ -7,12 +7,21 @@ from lib.components.mv import MotionVector, MotionVectorFrame
 from lib.enums import VBSMarker
 from lib.predictions.misc import rdo
 from multiprocessing import Queue
+from qp_bitcount import CIF_bitcount_perRow_i, QCIF_bitcount_perRow_i
 
-def intraframe_vbs(reconstructed_block: np.ndarray, block_dict, qtc_block: QTCBlock, diff_predictor: int, params: Params):
+
+def intraframe_vbs(reconstructed_block: np.ndarray, block_dict, qtc_block: QTCBlock, diff_predictor: int, params: Params, qp_rc_vbs = None):
     original_block = block_dict['current']
-    block_rdo_cost = rdo(original_block, reconstructed_block, qtc_block, diff_predictor, params.qp, is_intraframe=True)
+
+    if params.RCflag != 0:
+        block_rdo_cost = rdo(original_block, reconstructed_block, qtc_block, diff_predictor, qp_rc_vbs, is_intraframe=True)
+    else:
+        block_rdo_cost = rdo(original_block, reconstructed_block, qtc_block, diff_predictor, params.qp, is_intraframe=True)
     subblock_params_i = params.i // 2
-    q_matrix = quantization_matrix(subblock_params_i, params.qp - 1 if params.qp > 0 else 0)
+    if params.RCflag != 0:
+        q_matrix = quantization_matrix(subblock_params_i, qp_rc_vbs - 1 if qp_rc_vbs > 0 else 0)
+    else:
+        q_matrix = quantization_matrix(subblock_params_i, params.qp - 1 if params.qp > 0 else 0)
     top_lefts = [(y, x) for y in range(0, original_block.shape[0], subblock_params_i) for x in range(0, original_block.shape[1], subblock_params_i)]
     subblock_rdo_cost = 0
     prev_predictor = diff_predictor
@@ -66,14 +75,19 @@ def intraframe_vbs(reconstructed_block: np.ndarray, block_dict, qtc_block: QTCBl
         else:
             current_predictor = MotionVector(Intraframe.HORIZONTAL.value, -1, mae=hor_mae)
             predictor_block = hor_block
-        
-        qtc_subblock = QTCBlock(block=current_block - predictor_block, q_matrix=q_matrix)
+        if params.RCflag != 0:
+            qtc_subblock = QTCBlock(block=current_block - predictor_block, q_matrix=q_matrix, qp=qp_rc_vbs)
+        else:
+            qtc_subblock = QTCBlock(block=current_block - predictor_block, q_matrix=q_matrix, qp=params.qp)
         qtc_subblock.block_to_qtc()
         residual_subblocks.append(qtc_subblock.block)
         reconstructed_subblock = qtc_subblock.block + predictor_block
         diff_subpredictor = current_predictor - prev_predictor if prev_predictor is not None else current_predictor
         prev_predictor = current_predictor
-        subblock_rdo_cost += rdo(current_block, reconstructed_subblock, qtc_subblock, diff_subpredictor, params.qp, is_intraframe=True)
+        if params.RCflag != 0:
+            subblock_rdo_cost += rdo(current_block, reconstructed_subblock, qtc_subblock, diff_subpredictor, qp_rc_vbs, is_intraframe=True)
+        else:
+            subblock_rdo_cost += rdo(current_block, reconstructed_subblock, qtc_subblock, diff_subpredictor, params.qp, is_intraframe=True)
         qtc_subblocks.append(qtc_subblock.qtc_block)
         reconstructed_subblocks[centered_top_left[0]:centered_top_left[0] + subblock_params_i, centered_top_left[1]:centered_top_left[1] + subblock_params_i] = reconstructed_subblock
         subpredictor_dump.append(current_predictor)
@@ -81,7 +95,10 @@ def intraframe_vbs(reconstructed_block: np.ndarray, block_dict, qtc_block: QTCBl
     if subblock_rdo_cost < block_rdo_cost:
         qtc_stack = np.concatenate((np.concatenate((qtc_subblocks[0], qtc_subblocks[1]), axis=1), np.concatenate((qtc_subblocks[2], qtc_subblocks[3]), axis=1)), axis=0)
         temp_stack = np.concatenate((np.concatenate((residual_subblocks[0], residual_subblocks[1]), axis=1), np.concatenate((residual_subblocks[2], residual_subblocks[3]), axis=1)), axis=0)
-        qtc_block = QTCBlock(qtc_block=qtc_stack, block=temp_stack)
+        if params.RCflag != 0:
+            qtc_block = QTCBlock(qtc_block=qtc_stack, block=temp_stack, qp = qp_rc_vbs)
+        else:
+            qtc_block = QTCBlock(qtc_block=qtc_stack, block=temp_stack, qp = params.qp)
         return qtc_block, reconstructed_subblocks, subpredictor_dump
     else:
         return qtc_block, reconstructed_block, None
@@ -174,14 +191,39 @@ def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Para
     prev_predictor = None
     split_counter = 0
     bitcount_per_frame = 0
+    total_rows = height/params.i
+    table = None
+    if params.RCflag != 0:
+        initial_perframeBR = params.perframeBR
+        initial_bitbudgetPerRow = params.bitbudgetPerRow
+        if height == 288 and width == 352:
+            table = CIF_bitcount_perRow_i
+        elif height == 144 and width == 176:
+            table = QCIF_bitcount_perRow_i
+
     for y in range(0, height, frame.params_i):
         predictor_dump.new_row()
         qtc_block_dump.new_row()
+        if params.RCflag != 0:
+            if y == 0:
+                bitbudgetPerRow = initial_bitbudgetPerRow
+                perframeBR_remain = initial_perframeBR
+            else:
+                perframeBR_remain = perframeBR_remain - bitcount_per_frame 
+                rows_remain = total_rows - y_counter 
+                bitbudgetPerRow = perframeBR_remain / rows_remain
+            for index, value in table.items():
+                if value <= bitbudgetPerRow:
+                    qp_rc = index
+                    break
         for x in range(0, width, frame.params_i):
             current_coor = (y, x)
             current_block = block_frame[y_counter, x_counter]
             hor_top_left, _ = extend_block(current_coor, frame.params_i, (0, 0, 0, 1), (height, width))
             ver_top_left, _ = extend_block(current_coor, frame.params_i, (1, 0, 0, 0), (height, width))
+
+            if params.RCflag != 0:
+                q_matrix = quantization_matrix(params.i, qp_rc)
             
             # select vertical edge
             if hor_top_left[Intraframe.HORIZONTAL.value] == current_coor[Intraframe.HORIZONTAL.value]:
@@ -207,7 +249,11 @@ def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Para
                 current_predictor = MotionVector(Intraframe.HORIZONTAL.value, -1, mae=hor_mae)
                 predictor_block = hor_block
 
-            qtc_block = QTCBlock(block=current_block - predictor_block, q_matrix=q_matrix)
+            if params.RCflag != 0:
+                qtc_block = QTCBlock(block=current_block - predictor_block, q_matrix=q_matrix, qp= qp_rc)
+            else:    
+                qtc_block = QTCBlock(block=current_block - predictor_block, q_matrix=q_matrix, qp= params.qp)
+            
             qtc_block.block_to_qtc()
             reconstructed_block = qtc_block.block + predictor_block
             diff_predictor = current_predictor - prev_predictor if prev_predictor is not None else current_predictor
@@ -215,11 +261,18 @@ def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Para
             bitcount_per_block = len(qtc_block.to_str()) + len(current_predictor.to_str(is_intraframe=True))
 
             if params.VBSEnable:
-                vbs_qtc_block, vbs_reconstructed_block, vbs_predictor = intraframe_vbs(reconstructed_block, dict(
+                if params.RCflag != 0:
+                    vbs_qtc_block, vbs_reconstructed_block, vbs_predictor = intraframe_vbs(reconstructed_block, dict(
                     current=current_block,
                     left=hor_block,
                     top=ver_block,
-                ), qtc_block, diff_predictor, params)
+                    ), qtc_block, diff_predictor, params, qp_rc)
+                else:  
+                    vbs_qtc_block, vbs_reconstructed_block, vbs_predictor = intraframe_vbs(reconstructed_block, dict(
+                    current=current_block,
+                    left=hor_block,
+                    top=ver_block,
+                    ), qtc_block, diff_predictor, params)
                 reconstructed_block = vbs_reconstructed_block
                 if vbs_predictor is not None:
                     for mv in vbs_predictor:
