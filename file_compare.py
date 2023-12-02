@@ -17,8 +17,9 @@ for reconstructed_file in reconstructed_output_path.iterdir():
     decoder_file_array = np.frombuffer(decoder_file_bytes, dtype=np.uint8)
     for i in range(len(reconstructed_file_array)):
         if reconstructed_file_array[i] != decoder_file_array[i]:
-            print("Error in file: {}; index: {}".format(reconstructed_file.name, i))
-            print(reconstructed_file_array[i], decoder_file_array[i])
+            if reconstructed_file.name == '0':
+                print("Error in file: {}; index: {}".format(reconstructed_file.name, i))
+                print(reconstructed_file_array[i], decoder_file_array[i])
             flag = False
 
 if flag:

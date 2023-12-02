@@ -158,7 +158,7 @@ def reordering_helper(shape: tuple, current: tuple, row: int) -> tuple:
 
 class QTCBlock:
 
-    def __init__(self, block=None, qtc_block=None, q_matrix=None, qp = None):
+    def __init__(self, block=None, qtc_block=None, q_matrix=None, qp = 0):
         self.qtc = None
         self.block = block
         self.q_matrix = q_matrix
@@ -211,7 +211,7 @@ class QTCBlock:
     
     def to_str(self) -> str:
         if self.str is None:
-            self.str = ''.join(exp_golomb_encoding(x) for x in rle_encoding(reording_encoding(self.qtc_block)))
+            self.str = '{}{}'.format(''.join(exp_golomb_encoding(x) for x in rle_encoding(reording_encoding(self.qtc_block))), exp_golomb_encoding(self.qp))
         return self.str
 
 class QTCFrame:
@@ -304,20 +304,23 @@ class QTCFrame:
                     if item == 0:
                         if qtc_counter == 0:
                             self.new_row()
+                        qp = qtc[index_counter]
+                        index_counter += 1
+                        q_matrix = quantization_matrix(self.params_i, qp)
                         array = np.array(reording_decoding(rle_decoding(qtc_pending, q_matrix.shape), q_matrix.shape)).astype(int)
                         if vbs is VBSMarker.SPLIT:
                             subblock_params_i = self.params_i // 2
-                            sub_q_matrix = quantization_matrix(subblock_params_i, params_qp - 1 if params_qp > 0 else 0)
+                            sub_q_matrix = quantization_matrix(subblock_params_i, qp)
                             top_lefts = [(y, x) for y in range(0, self.params_i, subblock_params_i) for x in range(0, self.params_i, subblock_params_i)]
                             sub_qtc_blocks = []
                             for centered_top_left in top_lefts:
                                 centered_subblock = array[centered_top_left[0]:centered_top_left[0] + subblock_params_i, centered_top_left[1]:centered_top_left[1] + subblock_params_i]
-                                qtc_block = QTCBlock(qtc_block=centered_subblock, q_matrix=sub_q_matrix)
+                                qtc_block = QTCBlock(qtc_block=centered_subblock, q_matrix=sub_q_matrix, qp=qp)
                                 qtc_block.qtc_to_block()
                                 sub_qtc_blocks.append(qtc_block)
                             qtc_block = QTCBlock(block=np.concatenate((np.concatenate((sub_qtc_blocks[0], sub_qtc_blocks[1]), axis=1), np.concatenate((sub_qtc_blocks[2], sub_qtc_blocks[3]), axis=1)), axis=0), qtc_block=array)
                         else:
-                            qtc_block = QTCBlock(qtc_block=array, q_matrix=q_matrix)
+                            qtc_block = QTCBlock(qtc_block=array, q_matrix=q_matrix, qp=qp)
                             qtc_block.qtc_to_block()
                         self.append(qtc_block)
                         qtc_pending = []
@@ -329,6 +332,9 @@ class QTCFrame:
                 if item == 0:
                     if qtc_counter == 0:
                         self.new_row()
+                    qp = qtc[index_counter]
+                    index_counter += 1
+                    q_matrix = quantization_matrix(self.params_i, qp)
                     qtc_block = QTCBlock(qtc_block=np.array(reording_decoding(rle_decoding(qtc_pending, q_matrix.shape), q_matrix.shape)).astype(int), q_matrix=q_matrix)
                     qtc_block.qtc_to_block()
                     self.append(qtc_block)

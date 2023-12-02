@@ -14,9 +14,11 @@ def interframe_vbs(original_block_coor: tuple, original_block: np.ndarray, origi
         block_rdo_cost = rdo(original_block, reconstructed_block, qtc_block, diff_mv, params.qp, is_intraframe=False)
     subblock_params_i = params.i // 2
     if params.RCflag != 0:
-        q_matrix = quantization_matrix(subblock_params_i, qp_rc_vbs - 1 if qp_rc_vbs > 0 else 0)
+        qp = qp_rc_vbs - 1 if qp_rc_vbs > 0 else 0
+        q_matrix = quantization_matrix(subblock_params_i, qp)
     else:
-        q_matrix = quantization_matrix(subblock_params_i, params.qp - 1 if params.qp > 0 else 0)
+        qp = params.qp - 1 if params.qp > 0 else 0
+        q_matrix = quantization_matrix(subblock_params_i, qp)
     top_lefts = [(y, x) for y in range(0, original_block.shape[0], subblock_params_i) for x in range(0, original_block.shape[1], subblock_params_i)]
     top_lefts_in_search_window = [(y + original_block_coor[0], x + original_block_coor[1]) for y, x in top_lefts]
     subblock_rdo_cost = 0
@@ -34,19 +36,13 @@ def interframe_vbs(original_block_coor: tuple, original_block: np.ndarray, origi
         else:
             min_motion_vector, min_block = calc_full_range_motion_vector(centered_subblock, top_left_in_search_window, original_search_windows, original_search_window_coor, subblock_params_i, params.FMEEnable)
 
-        if params.RCflag != 0:
-            qtc_subblock = QTCBlock(block=centered_subblock - min_block, q_matrix=q_matrix, qp= qp_rc_vbs)
-        else:
-            qtc_subblock = QTCBlock(block=centered_subblock - min_block, q_matrix=q_matrix, qp= params.qp)
+        qtc_subblock = QTCBlock(block=centered_subblock - min_block, q_matrix=q_matrix, qp = qp)
         qtc_subblock.block_to_qtc()
         residual_subblocks.append(qtc_subblock.block)
         reconstructed_subblock = qtc_subblock.block + min_block
         diff_submv = min_motion_vector - prev_motion_vector if prev_motion_vector is not None else min_motion_vector
         prev_motion_vector = min_motion_vector
-        if params.RCflag != 0:
-            subblock_rdo_cost += rdo(centered_subblock, reconstructed_subblock, qtc_subblock, diff_submv, qp_rc_vbs, is_intraframe=False)
-        else:
-            subblock_rdo_cost += rdo(centered_subblock, reconstructed_subblock, qtc_subblock, diff_submv, params.qp, is_intraframe=False)
+        subblock_rdo_cost += rdo(centered_subblock, reconstructed_subblock, qtc_subblock, diff_submv, qp, is_intraframe=False)
         qtc_subblocks.append(qtc_subblock.qtc_block)
         reconstructed_subblocks.append(reconstructed_subblock)
         mv_subblocks.append(min_motion_vector)
@@ -55,10 +51,7 @@ def interframe_vbs(original_block_coor: tuple, original_block: np.ndarray, origi
         qtc_stack = np.concatenate((np.concatenate((qtc_subblocks[0], qtc_subblocks[1]), axis=1), np.concatenate((qtc_subblocks[2], qtc_subblocks[3]), axis=1)), axis=0)
         temp_stack = np.concatenate((np.concatenate((residual_subblocks[0], residual_subblocks[1]), axis=1), np.concatenate((residual_subblocks[2], residual_subblocks[3]), axis=1)), axis=0)
         reconstructed_stack = np.concatenate((np.concatenate((reconstructed_subblocks[0], reconstructed_subblocks[1]), axis=1), np.concatenate((reconstructed_subblocks[2], reconstructed_subblocks[3]), axis=1)), axis=0)
-        if params.RCflag != 0:
-            qtc_block = QTCBlock(qtc_block=qtc_stack, block=temp_stack, qp= qp_rc_vbs)
-        else:
-            qtc_block = QTCBlock(qtc_block=qtc_stack, block=temp_stack, qp= params.qp)  
+        qtc_block = QTCBlock(qtc_block=qtc_stack, block=temp_stack, qp = qp)
         return qtc_block, reconstructed_stack, mv_subblocks
     else:
         return qtc_block, reconstructed_block, None
