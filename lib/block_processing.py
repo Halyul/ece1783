@@ -186,13 +186,12 @@ def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed
                 table = CIF_bitcount_perRow_p
             elif frame.height == 144 and frame.width == 176:
                 table = QCIF_bitcount_perRow_p
+            for index, value in table.items():
+                if value <= bitbudgetPerRow:
+                    qp_rc = index
+                    break
+            q_matrix = quantization_matrix(params.i, qp_rc)
         for y in range(0, frame.shape[0], frame.params_i):
-            if params.RCflag != 0:
-                for index, value in table.items():
-                    if value <= bitbudgetPerRow:
-                        qp_rc = index
-                        break
-                q_matrix = quantization_matrix(params.i, qp_rc)
             job = pool.apply_async(func=interframe_prediction, args=(
                 counter,
                 frame, 
@@ -225,11 +224,27 @@ def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed
         jobs = []
         results = []
         split_counter = 0
+        bitcount_per_frame = 0
+        table = None
+        qp_rc = None
         row_block_no = frame.height // frame.params_i
         col_block_no = frame.width // frame.params_i
+        if params.RCflag != 0:
+            bitbudgetPerRow = params.bitbudgetPerRow
+            bitbudgetPerBlock = bitbudgetPerRow / col_block_no
+            if frame.height == 288 and frame.width == 352:
+                table = CIF_bitcount_perRow_p
+            elif frame.height == 144 and frame.width == 176:
+                table = QCIF_bitcount_perRow_p
+            for index, value in table.items():
+                value_perblock = value/col_block_no
+                if  value_perblock <= bitbudgetPerBlock:
+                    qp_rc = index
+                    break
+            q_matrix = quantization_matrix(params.i, qp_rc)
         reconstructed_block_dump = [[None] * col_block_no for _ in range(row_block_no)]
         qtc_block_dump = QTCFrame(shape=(row_block_no, col_block_no), vbs_enable=params.VBSEnable)
-        mv_dump = MotionVectorFrame(shape=(row_block_no, col_block_no), vbs_enable=params.VBSEnable, fme_enable=params.FMEEnable)
+        mv_dump = MotionVectorFrame(shape=(row_block_no, col_block_no), vbs_enable=params.VBSEnable, fme_enable=params.FMEEnable)  
         for y in range(0, frame.height, frame.params_i):
             for x in range(0, frame.width, frame.params_i):
                 job = pool.apply_async(func=interframe_block_prediction, args=(
@@ -237,6 +252,9 @@ def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed
                     frame,
                     params,
                     q_matrix,
+                    None,
+                    None,
+                    qp_rc
                 ))
                 jobs.append(job)
         
@@ -247,6 +265,9 @@ def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed
             mv_dump.set(current_coor, result[2])
             reconstructed_block_dump[current_coor[0]][current_coor[1]] = result[3]
             split_counter += result[4]
+            bitcount_per_frame += result[5]
+        
+        bitcount_per_row = bitcount_per_frame / row_block_no
     
     if current_reconstructed_frame is None:
         current_reconstructed_frame = Frame(frame=frame)
