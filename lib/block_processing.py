@@ -9,7 +9,7 @@ from lib.components.mv import MotionVectorFrame
 from lib.enums import VBSMarker
 from lib.predictions.intraframe import intraframe_prediction, intraframe_prediction_mode0
 from lib.predictions.interframe import interframe_prediction, interframe_block_prediction
-from qp_bitcount import CIF_bitcount_perRow_p, QCIF_bitcount_perRow_p
+from qp_bitcount import CIF_bitcount_perRow_p, QCIF_bitcount_perRow_p, CIF_bitcount_perRow_i, QCIF_bitcount_perRow_i
 
 def get_next_dispatchable_block(dispatched_array, shape, params_i):
     """
@@ -121,9 +121,46 @@ def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed
             qtc_block_dump = QTCFrame(shape=(row_block_no, col_block_no), vbs_enable=params.VBSEnable)
             mv_dump = MotionVectorFrame(shape=(row_block_no, col_block_no), vbs_enable=params.VBSEnable, is_intraframe=frame.is_intraframe)
             split_counter = 0
+            qp_rc = None
+            qp_rc_initial = None
+            bitcount_per_iter = 0
+            perframeBR_remain = 0
+            remain_blocks = 0
+            bitcount_per_frame = 0
+
+            if params.RCflag != 0:
+                initial_perframeBR = params.perframeBR
+                bitbudgetPerRow = params.bitbudgetPerRow
+                bitbudgetPerBlock = bitbudgetPerRow / col_block_no
+                if frame.height == 288 and frame.width == 352:
+                    table = CIF_bitcount_perRow_i
+                elif frame.height == 144 and frame.width == 176:
+                    table = QCIF_bitcount_perRow_i
+                for index, value in table.items():
+                    value_perblock = value/col_block_no
+                    if value_perblock <= bitbudgetPerBlock:
+                        qp_rc_initial = index
+                        break
+            
             while finished_blocks < total_blocks:
                 jobs = []
                 dispatchable_list, invalidate_list = get_next_dispatchable_block(dispatched_array, frame.shape, frame.params_i)
+                if params.RCflag != 0:
+                    if len(dispatchable_list) == 1:
+                        perframeBR_remain = initial_perframeBR
+                        qp_rc = qp_rc_initial
+                        q_matrix = quantization_matrix(params.i, qp_rc)
+                    else:
+                        remain_blocks = total_blocks - finished_blocks
+                        bitbudgetPerBlock = perframeBR_remain/remain_blocks
+                        bitbudgetPerRow = bitbudgetPerBlock * len(dispatchable_list)
+                        for index, value in table.items():
+                            value_perblock = value/col_block_no
+                            value_perlist = value_perblock * len(dispatchable_list)
+                            if value_perlist <= bitbudgetPerRow:
+                                qp_rc = index
+                                break
+                        q_matrix = quantization_matrix(params.i, qp_rc)
                 for item in dispatchable_list:
                     left_coor_index = item['left']
                     top_coor_index = item['top']
@@ -156,6 +193,7 @@ def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed
                         q_matrix,
                         params,
                         prev_predictor,
+                        qp_rc
                     ))
                     jobs.append(job)
                 for item in invalidate_list:
@@ -169,6 +207,12 @@ def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed
                     mv_dump.set(current_coor, result[2])
                     split_counter += result[4]
                     finished_blocks += 1
+                    bitcount_per_iter += result[5]
+                if params.RCflag != 0:
+                    perframeBR_remain -= bitcount_per_iter
+                bitcount_per_frame += bitcount_per_iter
+            bitcount_per_row = bitcount_per_frame/row_block_no
+
         elif params.ParallelMode == 0:
             qtc_block_dump, mv_dump, current_reconstructed_frame, split_counter, row_number, bitcount_per_frame= intraframe_prediction_mode0(frame, q_matrix, params)
             bitcount_per_row = bitcount_per_frame/row_number

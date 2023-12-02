@@ -96,13 +96,13 @@ def intraframe_vbs(reconstructed_block: np.ndarray, block_dict, qtc_block: QTCBl
     else:
         return qtc_block, reconstructed_block, None
 
-def intraframe_prediction(index, coor_dict, block_dict, q_matrix: np.ndarray, params: Params, prev_predictor) -> tuple:
+def intraframe_prediction(index, coor_dict, block_dict, q_matrix: np.ndarray, params: Params, prev_predictor,qp = None) -> tuple:
     current_coor = coor_dict['current']
     current_block = block_dict['current']
     left_coor = coor_dict['left']
     top_coor = coor_dict['top']
     split_counter = 0
-
+    mv_integrate = ''
     # select vertical edge
     if left_coor is None:
         hor_block = np.full((params.i, 1), 128)
@@ -126,16 +126,29 @@ def intraframe_prediction(index, coor_dict, block_dict, q_matrix: np.ndarray, pa
     else:
         current_predictor = MotionVector(Intraframe.HORIZONTAL.value, -1, mae=hor_mae)
         predictor_block = hor_block
-    
-    qtc_block = QTCBlock(block=current_block - predictor_block, q_matrix=q_matrix)
+
+    if params.RCflag !=0:
+        qtc_block = QTCBlock(block=current_block - predictor_block, q_matrix=q_matrix, qp = qp)
+    else:
+        qtc_block = QTCBlock(block=current_block - predictor_block, q_matrix=q_matrix, qp = params.qp)
+
     qtc_block.block_to_qtc()
     reconstructed_block = qtc_block.block + predictor_block
     diff_predictor = current_predictor - prev_predictor if prev_predictor is not None else current_predictor
 
+    bitcount_per_block = len(qtc_block.to_str()) + len(current_predictor.to_str(is_intraframe=True))
+
     if params.VBSEnable:
-        vbs_qtc_block, vbs_reconstructed_block, vbs_predictor = intraframe_vbs(reconstructed_block, block_dict, qtc_block, diff_predictor, params)
+        if params.RCflag != 0:
+            vbs_qtc_block, vbs_reconstructed_block, vbs_predictor = intraframe_vbs(reconstructed_block, block_dict, qtc_block, diff_predictor, params, qp_rc_vbs=qp)
+        else:  
+            vbs_qtc_block, vbs_reconstructed_block, vbs_predictor = intraframe_vbs(reconstructed_block, block_dict, qtc_block, diff_predictor, params, qp_rc_vbs= params.qp)
         reconstructed_block = vbs_reconstructed_block
         if vbs_predictor is not None:
+            for mv in vbs_predictor:
+                mv_integrate += mv.to_str(is_intraframe=True)
+                vbs_mv_length = len(mv_integrate)
+            bitcount_per_block = len(vbs_qtc_block.to_str()) + vbs_mv_length
             qtc_block = dict(
                 vbs=VBSMarker.SPLIT,
                 qtc_block=vbs_qtc_block,
@@ -147,6 +160,7 @@ def intraframe_prediction(index, coor_dict, block_dict, q_matrix: np.ndarray, pa
             split_counter += 1
             print('vbs used in Frame', index, (current_coor[0] * params.i, current_coor[1] * params.i))
         else:
+            bitcount_per_block = len(qtc_block.to_str()) + len(current_predictor.to_str(is_intraframe=True))
             qtc_block = dict(
                 vbs=VBSMarker.UNSPLIT,
                 qtc_block=qtc_block,
@@ -155,7 +169,7 @@ def intraframe_prediction(index, coor_dict, block_dict, q_matrix: np.ndarray, pa
                 vbs=VBSMarker.UNSPLIT,
                 predictor=current_predictor,
             )
-    return coor_dict['current'], qtc_block, current_predictor, reconstructed_block, split_counter
+    return coor_dict['current'], qtc_block, current_predictor, reconstructed_block, split_counter, bitcount_per_block
 
 def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Params, data_queue: Queue = None) -> tuple:
     """
