@@ -187,9 +187,8 @@ def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed
             ))
             jobs.append(job)
             counter += 1
-            result = job.get()
-            bitcount_per_frame += result[5]
-        bitcount_per_row = bitcount_per_frame/counter
+            
+        
         for job in jobs:
             results.append(job.get())
         
@@ -204,6 +203,8 @@ def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed
             mv_dump.append_list(index, result[2])
             reconstructed_block_dump[index] = result[3]
             split_counter += result[4]
+            bitcount_per_frame += result[5]
+        bitcount_per_row = bitcount_per_frame/counter
     elif params.ParallelMode == 1:
         jobs = []
         results = []
