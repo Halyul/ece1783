@@ -342,8 +342,10 @@ def processing_mode3(frame: Frame, config: Config, q_matrix: np.ndarray, reconst
     print("Processing", frame.index)
     params = config.params
     current_reconstructed_frame = None
+    bitcount_per_frame = 0
+    y_counter = 0
     if frame.is_intraframe:
-        qtc_block_dump, mv_dump, current_reconstructed_frame, split_counter = intraframe_prediction_mode0(frame, q_matrix, params, next_data_queue)
+        qtc_block_dump, mv_dump, current_reconstructed_frame, split_counter, _, _ = intraframe_prediction_mode0(frame, q_matrix, params, next_data_queue)
     else:
         empty_frame = Frame(-1, frame.height, frame.width, params_i=params.i, data=np.full(frame.height*frame.width, 256).reshape(frame.height, frame.width).astype(np.uint16))
         frame.prev = empty_frame.copy()
@@ -353,9 +355,31 @@ def processing_mode3(frame: Frame, config: Config, q_matrix: np.ndarray, reconst
         qtc_block_dump = QTCFrame(shape=(row_block_no, col_block_no), vbs_enable=params.VBSEnable)
         mv_dump = MotionVectorFrame(shape=(row_block_no, col_block_no), vbs_enable=params.VBSEnable, fme_enable=params.FMEEnable)
         split_counter = 0
+        total_rows = frame.height/params.i
+        table = None
+        if params.RCflag != 0:
+            initial_perframeBR = params.perframeBR
+            initial_bitbudgetPerRow = params.bitbudgetPerRow
+            if frame.height == 288 and frame.width == 352:
+                table = CIF_bitcount_perRow_p
+            elif frame.height == 144 and frame.width == 176:
+                table = QCIF_bitcount_perRow_p
         for y in range(0, frame.height, frame.params_i):
             # clear prev_motion_vector when a row is finished
             prev_motion_vector = None
+            if params.RCflag != 0:
+                if y == 0:
+                    bitbudgetPerRow = initial_bitbudgetPerRow
+                    perframeBR_remain = initial_perframeBR
+                else:
+                    perframeBR_remain = perframeBR_remain - bitcount_per_frame 
+                    rows_remain = total_rows - y_counter 
+                    bitbudgetPerRow = perframeBR_remain / rows_remain
+                for index, value in table.items():
+                    if value <= bitbudgetPerRow:
+                        qp_rc = index
+                        break
+                q_matrix = quantization_matrix(params.i, qp_rc) 
             for x in range(0, frame.width, frame.params_i):
                 current_coor = (y, x)
                 search_window_top_left, search_window_bottom_right = extend_block(current_coor, frame.params_i, (params.r, params.r, params.r, params.r), frame.shape)
@@ -372,9 +396,11 @@ def processing_mode3(frame: Frame, config: Config, q_matrix: np.ndarray, reconst
                         current_frame = current_frame.prev
                         if reconstructed_block_index + 1 == params.nRefFrames:
                             break
-                
                 # block is processable as the search window is filled
-                current_coor, qtc_block, min_motion_vector, reconstructed_block, current_split_counter = interframe_block_prediction(current_coor, frame, params, q_matrix, prev_motion_vector, next_data_queue)
+                if params.RCflag != 0:
+                    current_coor, qtc_block, min_motion_vector, reconstructed_block, current_split_counter, bitcount_per_block = interframe_block_prediction(current_coor, frame, params, q_matrix, prev_motion_vector, next_data_queue, qp_rc)
+                else:
+                    current_coor, qtc_block, min_motion_vector, reconstructed_block, current_split_counter, bitcount_per_block = interframe_block_prediction(current_coor, frame, params, q_matrix, prev_motion_vector, next_data_queue, params.qp)
                 if current_split_counter > 0:
                     split_counter += current_split_counter
                 if params.VBSEnable:
@@ -388,7 +414,10 @@ def processing_mode3(frame: Frame, config: Config, q_matrix: np.ndarray, reconst
                 reconstructed_block_dump[current_coor_index[0]][current_coor_index[1]] = reconstructed_block
                 qtc_block_dump.set(current_coor_index, qtc_block)
                 mv_dump.set(current_coor_index, min_motion_vector)
+                bitcount_per_frame += bitcount_per_block
                 # print("done", current_coor, frame.index)
+            y_counter += 1
+            
     
     if current_reconstructed_frame is None:
         current_reconstructed_frame = Frame(frame=frame)
