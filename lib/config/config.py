@@ -119,11 +119,11 @@ class Params(ConfigObject):
                 if 'targetBR' in self.config:
                     bitrate, unit = self.targetBR.split(' ')
                     if unit == 'bps':
-                        self.targetBR = int(bitrate)
+                        self.targetBR = float(bitrate)
                     elif unit == 'kbps':
-                        self.targetBR = int(bitrate) * 1024
+                        self.targetBR = float(bitrate) * 1024
                     elif unit == 'mbps':
-                        self.targetBR = int(bitrate) * 1024 * 1024
+                        self.targetBR = float(bitrate) * 1024 * 1024
                     else:
                         raise Exception('Invalid target bitrate unit.')
         if 'ParallelMode' in self.config:
