@@ -255,6 +255,25 @@ if __name__ == '__main__':
     results.sort(key=lambda x: x[0])
     array = np.array(results)
 
+    size_array = []
+    for i in range(total_frames):
+        mv_file = mv_path.joinpath('{}'.format(i))
+        mv_file_lines = mv_file.read_bytes()
+        qtc_file = residual_path.joinpath('{}'.format(i))
+        qtc_file_lines = qtc_file.read_bytes()
+        size_compressed = len(mv_file_lines) * 8 + len(qtc_file_lines) * 8
+        size_array.append(size_compressed)
+
+    plt.plot(array[:, 0], size_array, marker='o')
+    plt.ticklabel_format(useOffset=False, style='plain')
+    plt.xlabel('frame index')
+    plt.ylabel('bit_cost')
+    plt.xticks(array[:, 0])
+    plt.title('i={}, r={}, qp={}, i_period={}\n{}, h={}, w={}'.format(params_i, params_r, params_qp, params_i_period, video_name, height, width))
+    plt.savefig(params_i_period_path.joinpath('bit_cost.png'))
+    plt.clf()
+
+
     plt.plot(array[:, 0], array[:, 1], marker='o')
     plt.ticklabel_format(useOffset=False, style='plain')
     plt.xlabel('frame index')
