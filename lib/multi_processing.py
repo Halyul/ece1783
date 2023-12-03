@@ -183,8 +183,9 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
         if config.params.ParallelMode != 1:
             averge_bitcount_per_row_i = total_bitcount_per_row_i/counter_i
             print(f'the avg_bitcount_per_row_for_i_block = {int(averge_bitcount_per_row_i)},number of i_frame: {counter_i}')
-        averge_bitcount_per_row_p = total_bitcount_per_row_p/counter_p
-        print(f'the avg_bitcount_per_row_p_for_p_block = {int(averge_bitcount_per_row_p)},number of p_frame: {counter_p}')
+        if  config.params.i_period != 1:
+            averge_bitcount_per_row_p = total_bitcount_per_row_p/counter_p
+            print(f'the avg_bitcount_per_row_p_for_p_block = {int(averge_bitcount_per_row_p)},number of p_frame: {counter_p}')
         with config.output_path.split_counter_file.open('a') as f:
             total_blocks = (height // config.params.i) * (width // config.params.i)
             f.write("{} {}\n".format(-1, sum(split_counter['counter'] for split_counter in split_counters) /
