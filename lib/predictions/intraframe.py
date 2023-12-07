@@ -200,6 +200,7 @@ def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Para
     bitcount_per_frame = 0
     total_rows = height/params.i
     table = None
+    qp_rc = None
     if params.RCflag != 0:
         initial_perframeBR = params.perframeBR
         initial_bitbudgetPerRow = params.bitbudgetPerRow
@@ -223,6 +224,9 @@ def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Para
                 if value <= bitbudgetPerRow:
                     qp_rc = index
                     break
+            if qp_rc == None:
+                qp_rc = 11
+
         for x in range(0, width, frame.params_i):
             current_coor = (y, x)
             current_block = block_frame[y_counter, x_counter]

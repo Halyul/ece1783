@@ -319,8 +319,10 @@ def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed
 
     current_reconstructed_frame.convert_within_range()
     current_reconstructed_frame.dump(reconstructed_path.joinpath('{}'.format(frame.index)))
+
+    print(f"frame index: {frame.index}, bit count: {bitcount_per_frame}")
     
-    return current_reconstructed_frame, mv_dump, qtc_block_dump, split_counter, bitcount_per_row 
+    return current_reconstructed_frame, mv_dump, qtc_block_dump, split_counter, bitcount_per_row, bitcount_per_frame 
 
 def processing_mode3(frame: Frame, config: Config, q_matrix: np.ndarray, reconstructed_path: Path, prev_data_queue: Queue, next_data_queue: Queue, write_data_func: callable):
     """

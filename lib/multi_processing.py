@@ -148,7 +148,15 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
             reconstructed_path = config.output_path.reconstructed_folder
             if not frame.is_intraframe:
                 frame.prev = prev_frame
-            prev_frame, mv_dump, qtc_block_dump, split_counter, bitcount_per_row = processing(frame, config.params, q_matrix, reconstructed_path, pool)
+            prev_frame, mv_dump, qtc_block_dump, split_counter, bitcount_per_row, bit_count_per_frame = processing(frame, config.params, q_matrix, reconstructed_path, pool)
+
+            if config.params.RCflag == 2 and bit_count_per_frame > 8331 * config.params.qp ** 2 - 135000 * config.params.qp + 570000:
+                frame = Frame(counter, height, width, params_i=config.params.i, is_intraframe=True)
+                frame.read_from_file(file)
+                frame.convert_type(np.int16)
+                reconstructed_path = config.output_path.reconstructed_folder
+                prev_frame, mv_dump, qtc_block_dump, split_counter, bitcount_per_row, bit_count_per_frame = processing(frame, config.params, q_matrix, reconstructed_path, pool)
+
             split_counters.append(dict(
                 index=counter,
                 counter=split_counter,
