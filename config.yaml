@@ -26,7 +26,7 @@ params:
   VBSEnable: true # true, false
   FMEEnable: true # true, false
   FastME: true # true, false
-  RCflag: 1 # 0 -> OFF, 1 -> ON, 2, 3
+  RCflag: 2 # 0 -> OFF, 1 -> ON, 2, 3
   targetBR: 1 mbps # <x> bps, <x> kbps, <x> mbps
   ParallelMode: 0 # 0, 1, 2, 3
 
