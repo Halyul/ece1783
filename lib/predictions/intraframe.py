@@ -171,7 +171,7 @@ def intraframe_prediction(index, coor_dict, block_dict, q_matrix: np.ndarray, pa
             )
     return coor_dict['current'], qtc_block, current_predictor, reconstructed_block, split_counter, bitcount_per_block
 
-def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Params, data_queue: Queue = None, pass_num=1, per_block_row_bit_count=[]) -> tuple:
+def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Params, data_queue: Queue = None, pass_num=1, per_block_row_bit_count=[], scale_factor=1) -> tuple:
     """
         Calculate intra-frame prediction.
         No parallisim due to block dependency.
@@ -212,6 +212,7 @@ def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Para
     for y in range(0, height, frame.params_i):
         predictor_dump.new_row()
         qtc_block_dump.new_row()
+        bitcount_per_row = 0
         if params.RCflag != 0:
             if y == 0:
                 bitbudgetPerRow = initial_bitbudgetPerRow
@@ -224,7 +225,7 @@ def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Para
                 bit_budget_ratio = per_block_row_bit_count[y_counter] / bitbudgetPerRow
                 bitbudgetPerRow *= bit_budget_ratio
             for index, value in table.items():
-                if value <= bitbudgetPerRow:
+                if value * scale_factor <= bitbudgetPerRow:
                     qp_rc = index
                     break
             if qp_rc == None:
@@ -314,7 +315,7 @@ def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Para
                         vbs=VBSMarker.UNSPLIT,
                         predictor=current_predictor,
                     )
-            bitcount_per_frame += bitcount_per_block
+            bitcount_per_row += bitcount_per_block
             predictor_dump.append(current_predictor)
             qtc_block_dump.append(qtc_block)
             reconstructed_block_dump.raw[y_counter * frame.params_i:y_counter * frame.params_i + frame.params_i, x_counter * frame.params_i:x_counter * frame.params_i + frame.params_i] = reconstructed_block
@@ -322,6 +323,7 @@ def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Para
                 data_queue.put((current_coor, [convert_within_range(reconstructed_block)]))
             x_counter += 1
         y_counter += 1
-        per_block_row_bit_count.append(bitcount_per_frame)
+        per_block_row_bit_count.append(bitcount_per_row)
+        bitcount_per_frame += bitcount_per_row
         x_counter = 0
     return (qtc_block_dump, predictor_dump, reconstructed_block_dump, split_counter, y_counter, bitcount_per_frame, per_block_row_bit_count)

@@ -91,7 +91,7 @@ def get_next_dispatchable_block(dispatched_array, shape, params_i):
     dispatchable_list = [dict(t) for t in set(tuple(d.items()) for d in dispatchable_list)]
     return dispatchable_list, invalidate_list
 
-def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed_path: Path, pool: Pool, pass_num=1, per_block_row_bit_count=[]) -> tuple:
+def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed_path: Path, pool: Pool, pass_num, per_block_row_bit_count, scale_factor) -> tuple:
     """
         Calculate the motion vector for a block from the search window in parallel.
 
@@ -215,7 +215,7 @@ def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed
             bitcount_per_row = bitcount_per_frame/row_block_no
 
         elif params.ParallelMode == 0:
-            qtc_block_dump, mv_dump, current_reconstructed_frame, split_counter, row_number, bitcount_per_frame, per_block_row_bit_count = intraframe_prediction_mode0(frame, q_matrix, params, None, pass_num, per_block_row_bit_count)
+            qtc_block_dump, mv_dump, current_reconstructed_frame, split_counter, row_number, bitcount_per_frame, per_block_row_bit_count = intraframe_prediction_mode0(frame, q_matrix, params, None, pass_num, per_block_row_bit_count, scale_factor)
             bitcount_per_row = bitcount_per_frame/row_number
 
     elif params.ParallelMode == 2 or params.ParallelMode == 0:
@@ -231,24 +231,40 @@ def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed
                 table = CIF_bitcount_perRow_p
             elif frame.height == 144 and frame.width == 176:
                 table = QCIF_bitcount_perRow_p
-            for index, value in table.items():
-                if value <= bitbudgetPerRow:
-                    qp_rc = index
-                    break
-            q_matrix = quantization_matrix(params.i, qp_rc)
+            if pass_num == 1:
+                for index, value in table.items():
+                    if value * scale_factor <= bitbudgetPerRow:
+                        qp_rc = index
+                        break
+                q_matrix = quantization_matrix(params.i, qp_rc)
+            elif pass_num == 2:
+                q_matrix_list = []
+                for item in per_block_row_bit_count:
+                    qp = None
+                    bit_budget_ratio = item / bitbudgetPerRow
+                    for index, value in table.items():
+                        if value * scale_factor <= bitbudgetPerRow * bit_budget_ratio:
+                            qp = index
+                            break
+                    q_matrix_list.append({
+                        'qp': qp,
+                        'q_matrix': quantization_matrix(params.i, qp)
+                    })
         for y in range(0, frame.shape[0], frame.params_i):
+            if pass_num == 2:
+                q_matrix = q_matrix_list[counter]['q_matrix']
+                qp_rc = q_matrix_list[counter]['qp']
             job = pool.apply_async(func=interframe_prediction, args=(
                 counter,
                 frame, 
                 params, 
                 q_matrix,
                 y,
-                qp_rc
+                qp_rc,
             ))
             jobs.append(job)
             counter += 1
             
-        
         for job in jobs:
             results.append(job.get())
         
@@ -264,6 +280,7 @@ def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed
             reconstructed_block_dump[index] = result[3]
             split_counter += result[4]
             bitcount_per_frame += result[5]
+            per_block_row_bit_count.append(result[5])
         bitcount_per_row = bitcount_per_frame/counter
     elif params.ParallelMode == 1:
         jobs = []

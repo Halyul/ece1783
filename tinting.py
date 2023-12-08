@@ -238,7 +238,7 @@ if __name__ == '__main__':
 
         qtc_file = residual_path.joinpath('{}'.format(read_frame_counter))
         qtc_frame = QTCFrame(params_i=params_i, vbs_enable=VBSEnabled)
-        qtc_frame.read_from_file(qtc_file, q_matrix, width, params_qp)
+        qtc_frame.read_from_file(qtc_file, width)
         residual_frame = qtc_frame.to_residual_frame()
 
         frame, labels = construct_reconstructed_frame(mv_dump, frame, residual_frame, vbs_enable=VBSEnabled, fme_enable=FMEEnabled)

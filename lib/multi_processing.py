@@ -6,6 +6,7 @@ from lib.block_processing import processing, processing_mode3
 from lib.config.config import Config
 from lib.components.frame import Frame
 from lib.components.qtc import quantization_matrix
+from qp_bitcount import CIF_bitcount_perRow_i, QCIF_bitcount_perRow_i
 
 class MultiProcessingNew:
     def __init__(self, config: Config) -> None:
@@ -88,6 +89,10 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
     split_counters = []
     total_bitcount_per_row_i = 0
     total_bitcount_per_row_p = 0
+    if height == 288 and width == 352:
+        table = CIF_bitcount_perRow_i
+    elif height == 144 and width == 176:
+        table = QCIF_bitcount_perRow_i
     if config.params.ParallelMode == 3:
         data_queues = []
         while run_flag:
@@ -148,17 +153,20 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
             reconstructed_path = config.output_path.reconstructed_folder
             if not frame.is_intraframe:
                 frame.prev = prev_frame
-            if config.params.RCflag == 2:
+            per_block_row_bit_count = []
+            RCflag_store = config.params.RCflag
+            if RCflag_store == 2:
                 config.params.RCflag = 0
-            prev_frame, mv_dump, qtc_block_dump, split_counter, bitcount_per_row, bit_count_per_frame, per_block_row_bit_count = processing(frame, config.params, q_matrix, reconstructed_path, pool)
-            config.params.RCflag = 2
+            prev_frame, mv_dump, qtc_block_dump, split_counter, bitcount_per_row, bit_count_per_frame, per_block_row_bit_count = processing(frame, config.params, q_matrix, reconstructed_path, pool, 1, per_block_row_bit_count, 1)
+            config.params.RCflag = RCflag_store
 
             bit_count_threshold = 8331 * config.params.qp ** 2 - 135000 * config.params.qp + 560000
             if config.params.RCflag == 2:
                 if bit_count_per_frame > bit_count_threshold:
                     frame.is_intraframe = True
                     frame.prev = None
-                prev_frame, mv_dump, qtc_block_dump, split_counter, bitcount_per_row, bit_count_per_frame, _ = processing(frame, config.params, q_matrix, reconstructed_path, pool, 2, per_block_row_bit_count)
+                scale_factor = bitcount_per_row / table[config.params.qp]
+                prev_frame, mv_dump, qtc_block_dump, split_counter, bitcount_per_row, bit_count_per_frame, _ = processing(frame, config.params, q_matrix, reconstructed_path, pool, 2, per_block_row_bit_count, scale_factor)
 
             split_counters.append(dict(
                 index=counter,

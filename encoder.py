@@ -4,14 +4,7 @@ import time
 
 if __name__ == '__main__':
     start = time.time()
-    reader = YUVProcessor('config.yaml', 
-                        config_override=dict(
-                            # params=dict(
-                            #     stop_at=5,
-                            #     i=64,
-                            # )
-                        )
-                        )
+    reader = YUVProcessor('config.yaml')
     end = time.time()
     print(reader.info)
     print('Time: {}s'.format(end - start))
