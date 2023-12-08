@@ -150,16 +150,17 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
                 frame.prev = prev_frame
             if config.params.RCflag == 2:
                 config.params.RCflag = 0
-            prev_frame, mv_dump, qtc_block_dump, split_counter, bitcount_per_row, bit_count_per_frame = processing(frame, config.params, q_matrix, reconstructed_path, pool)
+            prev_frame, mv_dump, qtc_block_dump, split_counter, bitcount_per_row, bit_count_per_frame, per_block_row_bit_count = processing(frame, config.params, q_matrix, reconstructed_path, pool)
             config.params.RCflag = 2
 
             bit_count_threshold = 8331 * config.params.qp ** 2 - 135000 * config.params.qp + 560000
-            if config.params.RCflag == 2 and bit_count_per_frame > bit_count_threshold:
-                frame = Frame(counter, height, width, params_i=config.params.i, is_intraframe=True)
-                frame.read_from_file(file)
-                frame.convert_type(np.int16)
-                reconstructed_path = config.output_path.reconstructed_folder
-                prev_frame, mv_dump, qtc_block_dump, split_counter, bitcount_per_row, bit_count_per_frame = processing(frame, config.params, q_matrix, reconstructed_path, pool)
+            if config.params.RCflag == 2:
+                if bit_count_per_frame > bit_count_threshold:
+                    frame = Frame(counter, height, width, params_i=config.params.i, is_intraframe=True)
+                    frame.read_from_file(file)
+                    frame.convert_type(np.int16)
+                    reconstructed_path = config.output_path.reconstructed_folder
+                prev_frame, mv_dump, qtc_block_dump, split_counter, bitcount_per_row, bit_count_per_frame, _ = processing(frame, config.params, q_matrix, reconstructed_path, pool, 2, per_block_row_bit_count)
 
             split_counters.append(dict(
                 index=counter,

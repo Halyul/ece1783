@@ -171,7 +171,7 @@ def intraframe_prediction(index, coor_dict, block_dict, q_matrix: np.ndarray, pa
             )
     return coor_dict['current'], qtc_block, current_predictor, reconstructed_block, split_counter, bitcount_per_block
 
-def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Params, data_queue: Queue = None) -> tuple:
+def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Params, data_queue: Queue = None, pass_num=1, per_block_row_bit_count=[]) -> tuple:
     """
         Calculate intra-frame prediction.
         No parallisim due to block dependency.
@@ -215,11 +215,17 @@ def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Para
         if params.RCflag != 0:
             if y == 0:
                 bitbudgetPerRow = initial_bitbudgetPerRow
+                if pass_num == 2:
+                    bit_budget_ratio = per_block_row_bit_count[y] / bitbudgetPerRow
+                    bitbudgetPerRow *= bit_budget_ratio
                 perframeBR_remain = initial_perframeBR
             else:
-                perframeBR_remain = perframeBR_remain - bitcount_per_frame 
+                perframeBR_remain = perframeBR_remain - bitcount_per_frame
                 rows_remain = total_rows - y_counter 
                 bitbudgetPerRow = perframeBR_remain / rows_remain
+                if pass_num == 2:
+                    bit_budget_ratio = per_block_row_bit_count[y // 16] / bitbudgetPerRow
+                    bitbudgetPerRow *= bit_budget_ratio
             for index, value in table.items():
                 if value <= bitbudgetPerRow:
                     qp_rc = index
@@ -319,5 +325,6 @@ def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Para
                 data_queue.put((current_coor, [convert_within_range(reconstructed_block)]))
             x_counter += 1
         y_counter += 1
+        per_block_row_bit_count.append(bitcount_per_frame)
         x_counter = 0
-    return (qtc_block_dump, predictor_dump, reconstructed_block_dump, split_counter, y_counter, bitcount_per_frame)
+    return (qtc_block_dump, predictor_dump, reconstructed_block_dump, split_counter, y_counter, bitcount_per_frame, per_block_row_bit_count)
