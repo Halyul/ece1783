@@ -167,6 +167,8 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
                     frame.prev = None
                 scale_factor = bitcount_per_row / table[config.params.qp]
                 prev_frame, mv_dump, qtc_block_dump, split_counter, bitcount_per_row, bit_count_per_frame, _ = processing(frame, config.params, q_matrix, reconstructed_path, pool, 2, per_block_row_bit_count, scale_factor)
+                config.params.qp = qtc_block_dump.get_average_qp()
+                q_matrix = quantization_matrix(config.params.i, config.params.qp)
 
             split_counters.append(dict(
                 index=counter,

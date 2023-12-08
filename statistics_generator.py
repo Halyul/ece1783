@@ -264,6 +264,8 @@ if __name__ == '__main__':
         size_compressed = len(mv_file_lines) * 8 + len(qtc_file_lines) * 8
         size_array.append(size_compressed)
 
+    print(sum(size_array) / (total_frames / 30))
+
     plt.plot(array[:, 0], size_array, marker='o')
     plt.ticklabel_format(useOffset=False, style='plain')
     plt.xlabel('frame index')

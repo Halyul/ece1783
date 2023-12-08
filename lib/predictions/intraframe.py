@@ -222,8 +222,8 @@ def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Para
                 rows_remain = total_rows - y_counter 
                 bitbudgetPerRow = perframeBR_remain / rows_remain
             if pass_num == 2:
-                bit_budget_ratio = per_block_row_bit_count[y_counter] / bitbudgetPerRow
-                bitbudgetPerRow *= bit_budget_ratio
+                bit_budget_ratio = per_block_row_bit_count[y_counter]
+                bitbudgetPerRow = params.perframeBR * bit_budget_ratio
             for index, value in table.items():
                 if value * scale_factor <= bitbudgetPerRow:
                     qp_rc = index
@@ -326,4 +326,5 @@ def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Para
         per_block_row_bit_count.append(bitcount_per_row)
         bitcount_per_frame += bitcount_per_row
         x_counter = 0
+    per_block_row_bit_count = [item / bitcount_per_frame for item in per_block_row_bit_count]
     return (qtc_block_dump, predictor_dump, reconstructed_block_dump, split_counter, y_counter, bitcount_per_frame, per_block_row_bit_count)

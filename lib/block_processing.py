@@ -224,7 +224,7 @@ def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed
         counter = 0
         bitcount_per_frame = 0
         table = None
-        qp_rc = None
+        qp_rc = params.qp
         if params.RCflag != 0:
             bitbudgetPerRow = params.bitbudgetPerRow
             if frame.height == 288 and frame.width == 352:
@@ -240,20 +240,18 @@ def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed
             elif pass_num == 2:
                 q_matrix_list = []
                 for item in per_block_row_bit_count:
-                    qp = None
-                    bit_budget_ratio = item / bitbudgetPerRow
                     for index, value in table.items():
-                        if value * scale_factor <= bitbudgetPerRow * bit_budget_ratio:
-                            qp = index
+                        if value * scale_factor <= params.perframeBR * item:
+                            qp_rc = index
                             break
                     q_matrix_list.append({
-                        'qp': qp,
-                        'q_matrix': quantization_matrix(params.i, qp)
+                        'qp_rc': qp_rc,
+                        'q_matrix': quantization_matrix(params.i, qp_rc)
                     })
         for y in range(0, frame.shape[0], frame.params_i):
             if pass_num == 2:
                 q_matrix = q_matrix_list[counter]['q_matrix']
-                qp_rc = q_matrix_list[counter]['qp']
+                qp_rc = q_matrix_list[counter]['qp_rc']
             job = pool.apply_async(func=interframe_prediction, args=(
                 counter,
                 frame, 
@@ -282,13 +280,14 @@ def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed
             bitcount_per_frame += result[5]
             per_block_row_bit_count.append(result[5])
         bitcount_per_row = bitcount_per_frame/counter
+        per_block_row_bit_count = [item / bitcount_per_frame for item in per_block_row_bit_count]
     elif params.ParallelMode == 1:
         jobs = []
         results = []
         split_counter = 0
         bitcount_per_frame = 0
         table = None
-        qp_rc = None
+        qp_rc = params.qp
         row_block_no = frame.height // frame.params_i
         col_block_no = frame.width // frame.params_i
         if params.RCflag != 0:

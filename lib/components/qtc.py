@@ -224,6 +224,21 @@ class QTCFrame:
         self.params_i = params_i
         self.vbs_enable = vbs_enable
 
+    def get_average_qp(self) -> int:
+        """
+            Get the average qp of the QTC frame.
+
+            Returns:
+                int: The average qp.
+        """
+        qp_sum = 0
+        for row in self.blocks:
+            for block in row:
+                if self.vbs_enable:
+                    block = block['qtc_block']
+                qp_sum += block.qp
+        return qp_sum // (len(self.blocks) * len(self.blocks[0]))
+
     def new_row(self) -> None:
         """
             Add a new row.
