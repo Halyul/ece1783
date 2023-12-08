@@ -224,7 +224,7 @@ def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Para
                 rows_remain = total_rows - y_counter 
                 bitbudgetPerRow = perframeBR_remain / rows_remain
                 if pass_num == 2:
-                    bit_budget_ratio = per_block_row_bit_count[y // 16] / bitbudgetPerRow
+                    bit_budget_ratio = per_block_row_bit_count[y // frame.params_i] / bitbudgetPerRow
                     bitbudgetPerRow *= bit_budget_ratio
             for index, value in table.items():
                 if value <= bitbudgetPerRow:
