@@ -314,6 +314,7 @@ def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed
                     (y, x),
                     frame,
                     params,
+                    buffer,
                     q_matrix,
                     None,
                     None,
@@ -343,7 +344,7 @@ def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed
     
     return current_reconstructed_frame, mv_dump, qtc_block_dump, split_counter, bitcount_per_row, bitcount_per_frame, per_block_row_bit_count 
 
-def processing_mode3(frame: Frame, config: Config, q_matrix: np.ndarray, reconstructed_path: Path, prev_data_queue: Queue, next_data_queue: Queue, write_data_func: callable):
+def processing_mode3(frame: Frame, config: Config, q_matrix: np.ndarray, reconstructed_path: Path, prev_data_queue: Queue, next_data_queue: Queue, write_data_func: callable, buffer):
     """
         Calculate the motion vector for a block from the search window in parallel mode 3.
 
@@ -366,7 +367,7 @@ def processing_mode3(frame: Frame, config: Config, q_matrix: np.ndarray, reconst
     bitcount_per_frame = 0
     y_counter = 0
     if frame.is_intraframe:
-        qtc_block_dump, mv_dump, current_reconstructed_frame, split_counter, _, _ = intraframe_prediction_mode0(frame, q_matrix, params, next_data_queue)
+        qtc_block_dump, mv_dump, current_reconstructed_frame, split_counter, _, _, _ = intraframe_prediction_mode0(frame, q_matrix, params, buffer, next_data_queue)
     else:
         empty_frame = Frame(-1, frame.height, frame.width, params_i=params.i, data=np.full(frame.height*frame.width, 256).reshape(frame.height, frame.width).astype(np.uint16))
         frame.prev = empty_frame.copy()
@@ -419,9 +420,9 @@ def processing_mode3(frame: Frame, config: Config, q_matrix: np.ndarray, reconst
                             break
                 # block is processable as the search window is filled
                 if params.RCflag != 0:
-                    current_coor, qtc_block, min_motion_vector, reconstructed_block, current_split_counter, bitcount_per_block = interframe_block_prediction(current_coor, frame, params, q_matrix, prev_motion_vector, next_data_queue, qp_rc)
+                    current_coor, qtc_block, min_motion_vector, reconstructed_block, current_split_counter, bitcount_per_block = interframe_block_prediction(current_coor, frame, params, buffer, q_matrix, prev_motion_vector, next_data_queue, qp_rc)
                 else:
-                    current_coor, qtc_block, min_motion_vector, reconstructed_block, current_split_counter, bitcount_per_block = interframe_block_prediction(current_coor, frame, params, q_matrix, prev_motion_vector, next_data_queue, params.qp)
+                    current_coor, qtc_block, min_motion_vector, reconstructed_block, current_split_counter, bitcount_per_block = interframe_block_prediction(current_coor, frame, params, buffer, q_matrix, prev_motion_vector, next_data_queue, params.qp)
                 if current_split_counter > 0:
                     split_counter += current_split_counter
                 if params.VBSEnable:

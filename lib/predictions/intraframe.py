@@ -9,7 +9,7 @@ from lib.predictions.misc import rdo
 from multiprocessing import Queue
 from qp_bitcount import CIF_bitcount_perRow_i, QCIF_bitcount_perRow_i
 
-def intraframe_vbs(reconstructed_block: np.ndarray, og_block_coor, block_dict, qtc_block: QTCBlock, diff_predictor: int, params: Params, buffer, qp_rc_vbs = None):
+def intraframe_vbs(reconstructed_block: np.ndarray, block_dict, qtc_block: QTCBlock, diff_predictor: int, params: Params, qp_rc_vbs = None):
     original_block = block_dict['current']
 
     if params.RCflag != 0:
@@ -287,17 +287,17 @@ def intraframe_prediction_mode0(frame: Frame, q_matrix: np.ndarray, params: Para
             if params.VBSEnable:
                 if vbsed:
                     if params.RCflag != 0:
-                        vbs_qtc_block, vbs_reconstructed_block, vbs_predictor = intraframe_vbs(reconstructed_block, current_coor, dict(
+                        vbs_qtc_block, vbs_reconstructed_block, vbs_predictor = intraframe_vbs(reconstructed_block, dict(
                         current=current_block,
                         left=hor_block,
                         top=ver_block,
-                        ), qtc_block, diff_predictor, params, buffer, qp_rc)
+                        ), qtc_block, diff_predictor, params, qp_rc)
                     else:  
-                        vbs_qtc_block, vbs_reconstructed_block, vbs_predictor = intraframe_vbs(reconstructed_block, current_coor, dict(
+                        vbs_qtc_block, vbs_reconstructed_block, vbs_predictor = intraframe_vbs(reconstructed_block, dict(
                         current=current_block,
                         left=hor_block,
                         top=ver_block,
-                        ), qtc_block, diff_predictor, params, buffer)
+                        ), qtc_block, diff_predictor, params)
                     reconstructed_block = vbs_reconstructed_block
                     if vbs_predictor is not None:
                         for mv in vbs_predictor:

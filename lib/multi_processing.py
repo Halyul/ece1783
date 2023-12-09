@@ -97,6 +97,7 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
     if config.params.ParallelMode == 3:
         data_queues = []
         while run_flag:
+            buffer = Buffer(config.params.RCSaver)
             file = config.output_path.original_folder.joinpath(str(counter))
             while not file.exists():
                 print("Waiting for original file {} to be written".format(counter))
@@ -123,6 +124,7 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
                     prev_data_queue,
                     next_data_queue,
                     write_data_dispatcher,
+                    buffer,
             ))
             data_queues.append(next_data_queue)
             job.start()
