@@ -7,6 +7,7 @@ from lib.config.config import Config
 from lib.components.frame import Frame
 from lib.components.qtc import quantization_matrix
 from qp_bitcount import CIF_bitcount_perRow_i, QCIF_bitcount_perRow_i
+from lib.buffer import Buffer
 
 class MultiProcessingNew:
     def __init__(self, config: Config) -> None:
@@ -138,6 +139,7 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
             print("Job {} finished".format(job_index))
     else:
         while run_flag:
+            buffer = Buffer(config.params.RCSaver)
             file = config.output_path.original_folder.joinpath(str(counter))
             while not file.exists():
                 print("Waiting for original file {} to be written".format(counter))
@@ -157,7 +159,7 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
             RCflag_store = config.params.RCflag
             if RCflag_store == 2:
                 config.params.RCflag = 0
-            prev_frame, mv_dump, qtc_block_dump, split_counter, bitcount_per_row, bit_count_per_frame, per_block_row_bit_count = processing(frame, config.params, q_matrix, reconstructed_path, pool, 1, per_block_row_bit_count, 1)
+            prev_frame, mv_dump, qtc_block_dump, split_counter, bitcount_per_row, bit_count_per_frame, per_block_row_bit_count = processing(frame, config.params, q_matrix, reconstructed_path, pool, 1, per_block_row_bit_count, 1, buffer = buffer)
             config.params.RCflag = RCflag_store
 
             bit_count_threshold = 8331 * config.params.qp ** 2 - 135000 * config.params.qp + 560000
@@ -166,7 +168,7 @@ def block_processing_dispatcher(signal_q: mp.Queue, config: Config) -> None:
                     frame.is_intraframe = True
                     frame.prev = None
                 scale_factor = bitcount_per_row / table[config.params.qp]
-                prev_frame, mv_dump, qtc_block_dump, split_counter, bitcount_per_row, bit_count_per_frame, _ = processing(frame, config.params, q_matrix, reconstructed_path, pool, 2, per_block_row_bit_count, scale_factor)
+                prev_frame, mv_dump, qtc_block_dump, split_counter, bitcount_per_row, bit_count_per_frame, _ = processing(frame, config.params, q_matrix, reconstructed_path, pool, 2, per_block_row_bit_count, scale_factor, buffer = buffer)
                 config.params.qp = qtc_block_dump.get_average_qp()
                 q_matrix = quantization_matrix(config.params.i, config.params.qp)
 

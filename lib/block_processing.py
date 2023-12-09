@@ -91,7 +91,7 @@ def get_next_dispatchable_block(dispatched_array, shape, params_i):
     dispatchable_list = [dict(t) for t in set(tuple(d.items()) for d in dispatchable_list)]
     return dispatchable_list, invalidate_list
 
-def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed_path: Path, pool: Pool, pass_num, per_block_row_bit_count, scale_factor) -> tuple:
+def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed_path: Path, pool: Pool, pass_num, per_block_row_bit_count, scale_factor, buffer) -> tuple:
     """
         Calculate the motion vector for a block from the search window in parallel.
 
@@ -215,7 +215,7 @@ def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed
             bitcount_per_row = bitcount_per_frame/row_block_no
 
         elif params.ParallelMode == 0:
-            qtc_block_dump, mv_dump, current_reconstructed_frame, split_counter, row_number, bitcount_per_frame, per_block_row_bit_count = intraframe_prediction_mode0(frame, q_matrix, params, None, pass_num, per_block_row_bit_count, scale_factor)
+            qtc_block_dump, mv_dump, current_reconstructed_frame, split_counter, row_number, bitcount_per_frame, per_block_row_bit_count = intraframe_prediction_mode0(frame, q_matrix, params , buffer, None, pass_num, per_block_row_bit_count, scale_factor)
             bitcount_per_row = bitcount_per_frame/row_number
 
     elif params.ParallelMode == 2 or params.ParallelMode == 0:
@@ -259,6 +259,7 @@ def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed
                 q_matrix,
                 y,
                 qp_rc,
+                buffer,
             ))
             jobs.append(job)
             counter += 1
@@ -279,6 +280,7 @@ def processing(frame: Frame, params: Params, q_matrix: np.ndarray, reconstructed
             split_counter += result[4]
             bitcount_per_frame += result[5]
             per_block_row_bit_count.append(result[5])
+            buffer.concatenate(result[6])
         bitcount_per_row = bitcount_per_frame/counter
         per_block_row_bit_count = [item / bitcount_per_frame for item in per_block_row_bit_count]
     elif params.ParallelMode == 1:

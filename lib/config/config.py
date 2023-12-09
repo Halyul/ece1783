@@ -126,8 +126,12 @@ class Params(ConfigObject):
                         self.targetBR = float(bitrate) * 1024 * 1024
                     else:
                         raise Exception('Invalid target bitrate unit.')
-            if self.RCflag == 2:
+            if self.RCflag == 2 or self.RCflag == 3:
                 self.qp = 3
+                self.RCSaver = False
+            if self.RCflag == 3:
+                self.RCflag = 2
+                self.RCSaver = True
         if 'ParallelMode' in self.config:
             if self.ParallelMode == 1:
                 self.i_period = -1
