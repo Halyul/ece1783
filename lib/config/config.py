@@ -115,6 +115,7 @@ class Params(ConfigObject):
                     n = n // 2
             self.VBSEnable = True
         if 'RCflag' in self.config:
+            self.RCSaver = False
             if self.RCflag != 0:
                 if 'targetBR' in self.config:
                     bitrate, unit = self.targetBR.split(' ')
@@ -128,7 +129,6 @@ class Params(ConfigObject):
                         raise Exception('Invalid target bitrate unit.')
             if self.RCflag == 2 or self.RCflag == 3:
                 self.qp = 3
-                self.RCSaver = False
             if self.RCflag == 3:
                 self.RCflag = 2
                 self.RCSaver = True
